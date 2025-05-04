@@ -4,3 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+bitflags = "2.9.0"
+compile-time-crc32 = "0.1.2"
+crc-fast = "1.1.0"
+indoc = "2.0.6"
+static_assertions = "1.1.0"
+
+[profile.release]
+lto = "fat"
