@@ -55,8 +55,16 @@ impl WindowBuffer {
         Self {
             buffer: String::with_capacity(initial_capacity),
             window_span: TextSpan {
-                start: TextPosition { byte_offset: 0, line: 1, column: 1 },
-                end: TextPosition { byte_offset: 0, line: 1, column: 1 },
+                start: TextPosition {
+                    byte_offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+                end: TextPosition {
+                    byte_offset: 0,
+                    line: 1,
+                    column: 1,
+                },
             },
             last_read_char: None,
         }
@@ -85,7 +93,7 @@ impl WindowBuffer {
     }
 
     pub fn advance(&mut self, length: usize) {
-        for _ in 0.. length {
+        for _ in 0..length {
             self.read_char();
         }
     }

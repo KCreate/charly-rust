@@ -20,13 +20,13 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use std::str::FromStr;
-use crate::charly::token::{Token, TokenType};
 use crate::charly::token::TokenError::MalformedFloat;
 use crate::charly::token::TokenError::MalformedInteger;
 use crate::charly::token::TokenError::UnclosedStringLiteral;
 use crate::charly::token::TokenError::UnexpectedCharacter;
+use crate::charly::token::{Token, TokenType};
 use crate::charly::window_buffer::WindowBuffer;
+use std::str::FromStr;
 
 pub struct Tokenizer {
     buffer: WindowBuffer,
@@ -41,7 +41,9 @@ impl Iterator for Tokenizer {
 
 impl Tokenizer {
     pub fn new(source: &str) -> Self {
-        Self { buffer: WindowBuffer::from(source), }
+        Self {
+            buffer: WindowBuffer::from(source),
+        }
     }
 
     pub fn iter_stripped(&mut self) -> impl Iterator<Item = Token> {
@@ -76,7 +78,7 @@ impl Tokenizer {
                 _ => None,
             },
 
-            _ => None
+            _ => None,
         };
 
         if token.is_some() {
@@ -103,7 +105,7 @@ impl Tokenizer {
         Token {
             token_type,
             span: self.buffer.window_span.clone(),
-            raw: self.buffer.window_as_str().to_string()
+            raw: self.buffer.window_as_str().to_string(),
         }
     }
 
@@ -112,7 +114,6 @@ impl Tokenizer {
         assert!(char.is_whitespace());
 
         match char {
-
             // newlines
             '\n' => self.build_token(TokenType::Newline),
             '\r' => {
@@ -151,7 +152,7 @@ impl Tokenizer {
                         Some(c) => {
                             // unnecessary escape sequence
                             content.push(c);
-                        },
+                        }
                         None => {
                             // unclosed string literal
                             return self.build_token(TokenType::Error(UnclosedStringLiteral));
@@ -177,7 +178,7 @@ impl Tokenizer {
             Some("0x") => self.consume_number_with_base(16, 'x'),
             Some("0o") => self.consume_number_with_base(8, 'o'),
             Some("0b") => self.consume_number_with_base(2, 'b'),
-            _ => self.consume_decimal()
+            _ => self.consume_decimal(),
         }
     }
 
@@ -190,7 +191,6 @@ impl Tokenizer {
             match self.buffer.peek_char() {
                 Some(c) if c.is_decimal_digit() => self.buffer.advance(1),
                 Some('.') => {
-
                     // there can only be one decimal point
                     if found_decimal_point {
                         break;
@@ -198,14 +198,13 @@ impl Tokenizer {
 
                     let next = self.buffer.peek_char_with_lookahead(1);
                     match next {
-
                         // only allow decimal point if there is a digit after it,
                         // otherwise it is treated as a separate dot token
                         Some(c) if c.is_decimal_digit() => {
                             self.buffer.advance(2);
                             found_decimal_point = true;
                         }
-                        _ => break
+                        _ => break,
                     }
                 }
                 _ => break,
@@ -217,9 +216,7 @@ impl Tokenizer {
             let value = f64::from_str(window_text);
 
             match value {
-                Ok(value) => {
-                    self.build_token(TokenType::Float(value))
-                }
+                Ok(value) => self.build_token(TokenType::Float(value)),
                 Err(err) => self.build_token(TokenType::Error(MalformedFloat(err))),
             }
         } else {
@@ -227,9 +224,7 @@ impl Tokenizer {
             let value = i64::from_str_radix(window_text, 10);
 
             match value {
-                Ok(value) => {
-                    self.build_token(TokenType::Integer(value))
-                }
+                Ok(value) => self.build_token(TokenType::Integer(value)),
                 Err(err) => self.build_token(TokenType::Error(MalformedInteger(err))),
             }
         }
@@ -357,50 +352,65 @@ mod tests {
             if a > 100 print("hello world")
         "#;
 
-        assert_tokens(source, vec![
-            "Let",
-            "Identifier(a)",
-            "Assign",
-            "Integer(200)",
-            "If",
-            "Identifier(a)",
-            "ComparisonOp(Gt)",
-            "Integer(100)",
-            "Identifier(print)",
-            "LeftParen",
-            "String(hello world)",
-            "RightParen",
-        ]);
+        assert_tokens(
+            source,
+            vec![
+                "Let",
+                "Identifier(a)",
+                "Assign",
+                "Integer(200)",
+                "If",
+                "Identifier(a)",
+                "ComparisonOp(Gt)",
+                "Integer(100)",
+                "Identifier(print)",
+                "LeftParen",
+                "String(hello world)",
+                "RightParen",
+            ],
+        );
     }
 
     #[test]
     fn tokenize_identifiers() {
         let source = "foo Foo foo_bar FOO_BAR $123 _123";
-        assert_tokens(source, vec![
-            "Identifier(foo)",
-            "Identifier(Foo)",
-            "Identifier(foo_bar)",
-            "Identifier(FOO_BAR)",
-            "Identifier($123)",
-            "Identifier(_123)",
-        ]);
+        assert_tokens(
+            source,
+            vec![
+                "Identifier(foo)",
+                "Identifier(Foo)",
+                "Identifier(foo_bar)",
+                "Identifier(FOO_BAR)",
+                "Identifier($123)",
+                "Identifier(_123)",
+            ],
+        );
     }
 
     #[test]
     fn tokenize_numbers() {
         let source = "123 0x123 0b1010 0o123 0.25 10.0 123.5 25.foo 25.25.25 25.25.foo";
-        assert_tokens(source, vec![
-            "Integer(123)",
-            "Integer(291)",
-            "Integer(10)",
-            "Integer(83)",
-            "Float(0.25)",
-            "Float(10)",
-            "Float(123.5)",
-            "Integer(25)", "Dot", "Identifier(foo)",
-            "Float(25.25)", "Dot", "Integer(25)",
-            "Float(25.25)", "Dot", "Identifier(foo)",
-        ]);
+        assert_tokens(
+            source,
+            vec![
+                "Integer(123)",
+                "Integer(291)",
+                "Integer(10)",
+                "Integer(83)",
+                "Float(0.25)",
+                "Float(10)",
+                "Float(123.5)",
+                "Integer(25)",
+                "Dot",
+                "Identifier(foo)",
+                "Float(25.25)",
+                "Dot",
+                "Integer(25)",
+                "Float(25.25)",
+                "Dot",
+                "Identifier(foo)",
+            ],
+        );
     }
 
     #[test]
@@ -412,13 +422,16 @@ mod tests {
             "\n\r\t\"\\"
             "\a\b\c"
         "#;
-        assert_tokens(source, vec![
-            r#"String(hello world)"#,
-            "String()",
-            r#"String(hello\nworld)"#,
-            r#"String(\n\r\t\"\\)"#,
-            r#"String(abc)"#,
-        ]);
+        assert_tokens(
+            source,
+            vec![
+                r#"String(hello world)"#,
+                "String()",
+                r#"String(hello\nworld)"#,
+                r#"String(\n\r\t\"\\)"#,
+                r#"String(abc)"#,
+            ],
+        );
     }
 
     #[test]
@@ -432,12 +445,15 @@ mod tests {
 */
 foo // single line comment
         "#;
-        assert_tokens(source, vec![
-            "SingleLineComment(single line comment)",
-            "MultiLineComment(\n    multi\n    line\n    comment)",
-            "Identifier(foo)",
-            "SingleLineComment(single line comment)",
-        ]);
+        assert_tokens(
+            source,
+            vec![
+                "SingleLineComment(single line comment)",
+                "MultiLineComment(\n    multi\n    line\n    comment)",
+                "Identifier(foo)",
+                "SingleLineComment(single line comment)",
+            ],
+        );
     }
 
     #[test]
@@ -457,32 +473,106 @@ foo // single line comment
 
             () {} [] . .. ... : ; , @ <- -> => ?
         "#;
-        assert_tokens(source, vec![
-            "True", "False", "Null", "Super",
-
-            "As", "Assert", "Await", "Break", "Builtin", "Case", "Catch", "Class", "Const",
-            "Continue", "Default", "Defer", "Do", "Else", "Export", "Extends", "Final",
-            "Finally", "For", "From", "Fn", "Guard", "If", "Import", "In", "Instanceof",
-            "Let", "Loop", "Match", "Private", "Return", "Spawn", "Static", "Switch",
-            "Throw", "Try", "Typeof", "Unless", "Until", "While",
-
-            "Operator(Add)", "Operator(Sub)", "Operator(Mul)", "Operator(Div)",
-            "Operator(Mod)", "Operator(Pow)", "Operator(And)", "Operator(Or)",
-            "Operator(BitOr)", "Operator(BitAnd)", "Operator(BitXor)", "Operator(BitLeftShift)",
-            "Operator(BitRightShift)", "Operator(BitUnsignedRightShift)",
-            "Operator(Not)", "Operator(BitNot)",
-
-            "ComparisonOp(Eq)", "ComparisonOp(Neq)", "ComparisonOp(Gt)", "ComparisonOp(Gte)",
-            "ComparisonOp(Lt)", "ComparisonOp(Lte)",
-            "Assign", "OperatorAssign(Add)", "OperatorAssign(Sub)", "OperatorAssign(Mul)",
-            "OperatorAssign(Div)", "OperatorAssign(Mod)", "OperatorAssign(Pow)",
-            "OperatorAssign(BitOr)", "OperatorAssign(BitAnd)", "OperatorAssign(BitXor)",
-            "OperatorAssign(BitLeftShift)", "OperatorAssign(BitRightShift)",
-            "OperatorAssign(BitUnsignedRightShift)",
-
-            "LeftParen", "RightParen", "LeftBrace", "RightBrace", "LeftBracket", "RightBracket",
-            "Dot", "DoubleDot", "TripleDot", "Colon", "Semicolon", "Comma", "AtSign", "LeftArrow",
-            "RightArrow", "RightThickArrow", "QuestionMark",
-        ]);
+        assert_tokens(
+            source,
+            vec![
+                "True",
+                "False",
+                "Null",
+                "Super",
+                "As",
+                "Assert",
+                "Await",
+                "Break",
+                "Builtin",
+                "Case",
+                "Catch",
+                "Class",
+                "Const",
+                "Continue",
+                "Default",
+                "Defer",
+                "Do",
+                "Else",
+                "Export",
+                "Extends",
+                "Final",
+                "Finally",
+                "For",
+                "From",
+                "Fn",
+                "Guard",
+                "If",
+                "Import",
+                "In",
+                "Instanceof",
+                "Let",
+                "Loop",
+                "Match",
+                "Private",
+                "Return",
+                "Spawn",
+                "Static",
+                "Switch",
+                "Throw",
+                "Try",
+                "Typeof",
+                "Unless",
+                "Until",
+                "While",
+                "Operator(Add)",
+                "Operator(Sub)",
+                "Operator(Mul)",
+                "Operator(Div)",
+                "Operator(Mod)",
+                "Operator(Pow)",
+                "Operator(And)",
+                "Operator(Or)",
+                "Operator(BitOr)",
+                "Operator(BitAnd)",
+                "Operator(BitXor)",
+                "Operator(BitLeftShift)",
+                "Operator(BitRightShift)",
+                "Operator(BitUnsignedRightShift)",
+                "Operator(Not)",
+                "Operator(BitNot)",
+                "ComparisonOp(Eq)",
+                "ComparisonOp(Neq)",
+                "ComparisonOp(Gt)",
+                "ComparisonOp(Gte)",
+                "ComparisonOp(Lt)",
+                "ComparisonOp(Lte)",
+                "Assign",
+                "OperatorAssign(Add)",
+                "OperatorAssign(Sub)",
+                "OperatorAssign(Mul)",
+                "OperatorAssign(Div)",
+                "OperatorAssign(Mod)",
+                "OperatorAssign(Pow)",
+                "OperatorAssign(BitOr)",
+                "OperatorAssign(BitAnd)",
+                "OperatorAssign(BitXor)",
+                "OperatorAssign(BitLeftShift)",
+                "OperatorAssign(BitRightShift)",
+                "OperatorAssign(BitUnsignedRightShift)",
+                "LeftParen",
+                "RightParen",
+                "LeftBrace",
+                "RightBrace",
+                "LeftBracket",
+                "RightBracket",
+                "Dot",
+                "DoubleDot",
+                "TripleDot",
+                "Colon",
+                "Semicolon",
+                "Comma",
+                "AtSign",
+                "LeftArrow",
+                "RightArrow",
+                "RightThickArrow",
+                "QuestionMark",
+            ],
+        );
     }
 }

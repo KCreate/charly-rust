@@ -20,27 +20,25 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-mod tokenizer;
 mod token;
+mod tokenizer;
 mod window_buffer;
 
-use std::path::PathBuf;
-use std::process::ExitCode;
-use crate::{Args, Commands};
 use crate::charly::token::{Token, TokenType};
 use crate::charly::tokenizer::Tokenizer;
+use crate::{Args, Commands};
+use std::path::PathBuf;
+use std::process::ExitCode;
 
 pub fn run(cli: Args) -> ExitCode {
     match cli.command {
         Commands::Run {
             filename,
             runtime_args: _,
-            debug_args: _
+            debug_args: _,
         } => {
-            let path = PathBuf::try_from(filename)
-                .expect("Failed to convert filename to path");
-            let content = std::fs::read_to_string(&path)
-                .expect("Failed to read file");
+            let path = PathBuf::try_from(filename).expect("Failed to convert filename to path");
+            let content = std::fs::read_to_string(&path).expect("Failed to read file");
 
             let tokenizer = Tokenizer::new(&content);
             let tokens: Vec<Token> = tokenizer.collect();

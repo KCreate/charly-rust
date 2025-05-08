@@ -20,9 +20,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+use crate::charly::window_buffer::TextSpan;
 use std::fmt::{Display, Formatter};
 use std::num::{ParseFloatError, ParseIntError};
-use crate::charly::window_buffer::TextSpan;
 
 #[derive(Debug)]
 pub struct Token {
@@ -39,8 +39,7 @@ pub enum TokenError {
     MalformedFloat(ParseFloatError),
 }
 
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum TokenType {
     Error(TokenError),
 
@@ -133,7 +132,6 @@ pub enum TokenType {
 
 #[derive(Debug, PartialEq)]
 pub enum OperatorType {
-
     // binary operators
     Add,
     Sub,
@@ -224,7 +222,9 @@ impl TokenType {
             "<<=" => Some(TokenType::OperatorAssign(OperatorType::BitLeftShift)),
             ">>=" => Some(TokenType::OperatorAssign(OperatorType::BitRightShift)),
 
-            ">>>=" => Some(TokenType::OperatorAssign(OperatorType::BitUnsignedRightShift)),
+            ">>>=" => Some(TokenType::OperatorAssign(
+                OperatorType::BitUnsignedRightShift,
+            )),
             _ => None,
         }
     }
@@ -283,7 +283,7 @@ impl TokenType {
             "unless" => TokenType::Unless,
             "until" => TokenType::Until,
             "while" => TokenType::While,
-            _ => return None
+            _ => return None,
         };
 
         Some(keyword_type)
