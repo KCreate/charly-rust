@@ -31,15 +31,16 @@ pub struct Token {
     pub raw: String,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TokenError {
     UnexpectedCharacter(char),
     UnclosedStringLiteral,
     MalformedInteger(ParseIntError),
     MalformedFloat(ParseFloatError),
+    UnexpectedClosingBracket,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TokenType {
     Error(TokenError),
 
@@ -47,7 +48,7 @@ pub enum TokenType {
     Integer(i64),
     Float(f64),
     String(String),
-    FormatStringComponent(String),
+    FormatStringPart(String),
     Identifier(String),
 
     // literal keywords
@@ -130,7 +131,7 @@ pub enum TokenType {
     MultiLineComment(String),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum OperatorType {
     // binary operators
     Add,
@@ -155,7 +156,7 @@ pub enum OperatorType {
     BitNot,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum ComparisonOperatorType {
     Eq,
     Neq,
@@ -288,6 +289,18 @@ impl TokenType {
 
         Some(keyword_type)
     }
+
+    pub fn matching_bracket(&self) -> Option<TokenType> {
+        match self {
+            TokenType::LeftParen => Some(TokenType::RightParen),
+            TokenType::LeftBrace => Some(TokenType::RightBrace),
+            TokenType::LeftBracket => Some(TokenType::RightBracket),
+            TokenType::RightParen => Some(TokenType::LeftParen),
+            TokenType::RightBrace => Some(TokenType::LeftBrace),
+            TokenType::RightBracket => Some(TokenType::LeftBracket),
+            _ => None,
+        }
+    }
 }
 
 impl Display for TokenType {
@@ -297,8 +310,8 @@ impl Display for TokenType {
             TokenType::Integer(value) => write!(f, "Integer({})", value),
             TokenType::Float(value) => write!(f, "Float({})", value),
             TokenType::String(value) => write!(f, "String({})", value.escape_debug()),
-            TokenType::FormatStringComponent(value) => {
-                write!(f, "FormatStringComponent({})", value.escape_debug())
+            TokenType::FormatStringPart(value) => {
+                write!(f, "FormatStringPart({})", value.escape_debug())
             }
             TokenType::Identifier(value) => write!(f, "Identifier({})", value),
             TokenType::SingleLineComment(value) => write!(f, "SingleLineComment({})", value),

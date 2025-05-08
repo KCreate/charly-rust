@@ -20,16 +20,39 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use crate::charly::token::TokenError::MalformedFloat;
 use crate::charly::token::TokenError::MalformedInteger;
 use crate::charly::token::TokenError::UnclosedStringLiteral;
 use crate::charly::token::TokenError::UnexpectedCharacter;
+use crate::charly::token::TokenError::{MalformedFloat, UnexpectedClosingBracket};
 use crate::charly::token::{Token, TokenType};
 use crate::charly::window_buffer::WindowBuffer;
 use std::str::FromStr;
 
+#[derive(PartialEq)]
+pub enum TokenizerMode {
+    TopLevel,
+    String,
+    InterpolatedExpression,
+    InterpolatedIdentifier,
+}
+
 pub struct Tokenizer {
     buffer: WindowBuffer,
+    mode: TokenizerMode,
+
+    /// contains opened paren, brace and bracket tokens
+    bracket_stack: Vec<TokenType>,
+
+    /// contains the size of the bracket_stack the last
+    /// time a string interpolation was started
+    interpolation_stack: Vec<usize>,
+}
+
+#[allow(dead_code)]
+pub enum TokenDetailLevel {
+    Full,
+    NoWhitespace,
+    NoWhitespaceAndComments,
 }
 
 impl Iterator for Tokenizer {
@@ -43,13 +66,27 @@ impl Tokenizer {
     pub fn new(source: &str) -> Self {
         Self {
             buffer: WindowBuffer::from(source),
+            mode: TokenizerMode::TopLevel,
+            bracket_stack: Vec::new(),
+            interpolation_stack: Vec::new(),
         }
     }
 
-    pub fn iter_stripped(&mut self) -> impl Iterator<Item = Token> {
-        self.filter_map(|t| match t.token_type {
-            TokenType::Whitespace | TokenType::Newline => None,
-            _ => Some(t),
+    pub fn iter(&mut self, detail_level: TokenDetailLevel) -> impl Iterator<Item = Token> {
+        self.filter(move |t| match detail_level {
+            TokenDetailLevel::Full => true,
+            TokenDetailLevel::NoWhitespace => match t.token_type {
+                TokenType::Whitespace => false,
+                TokenType::Newline => false,
+                _ => true,
+            },
+            TokenDetailLevel::NoWhitespaceAndComments => match t.token_type {
+                TokenType::Whitespace => false,
+                TokenType::Newline => false,
+                TokenType::SingleLineComment(_) => false,
+                TokenType::MultiLineComment(_) => false,
+                _ => true,
+            },
         })
     }
 
@@ -58,9 +95,14 @@ impl Tokenizer {
 
         let char = self.buffer.peek_char()?;
 
+        match self.mode {
+            TokenizerMode::String => return Some(self.consume_string(false)),
+            TokenizerMode::InterpolatedIdentifier => return Some(self.consume_identifier()),
+            _ => {}
+        }
+
         /*
             TODO:
-            - format strings "$variable" and "${<expression>}"
             - error reporting
         */
         let token = match char {
@@ -69,7 +111,7 @@ impl Tokenizer {
             c if c.is_decimal_digit() => Some(self.consume_number()),
 
             // string literals
-            '\"' => Some(self.consume_string()),
+            '\"' => Some(self.consume_string(true)),
 
             // comments
             '/' => match self.buffer.peek_char_with_lookahead(1) {
@@ -91,6 +133,40 @@ impl Tokenizer {
             match TokenType::try_token(lookahead) {
                 Some(token_type) => {
                     self.buffer.advance(n);
+
+                    match token_type {
+                        TokenType::LeftParen | TokenType::LeftBrace | TokenType::LeftBracket => {
+                            self.bracket_stack.push(token_type.clone())
+                        }
+
+                        TokenType::RightParen | TokenType::RightBrace | TokenType::RightBracket => {
+                            let expected_match = token_type.matching_bracket().unwrap();
+                            let actual_match = self.bracket_stack.last();
+
+                            match actual_match {
+                                Some(actual) if *actual == expected_match => {
+                                    self.bracket_stack.pop();
+
+                                    if self.mode == TokenizerMode::InterpolatedExpression {
+                                        if let Some(top) = self.interpolation_stack.last() {
+                                            if *top == self.bracket_stack.len() {
+                                                self.interpolation_stack.pop();
+                                                self.mode = TokenizerMode::String;
+                                                return Some(self.consume_string(false));
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    let token_type = TokenType::Error(UnexpectedClosingBracket);
+                                    return Some(self.build_token(token_type));
+                                }
+                            }
+                        }
+
+                        _ => {}
+                    }
+
                     return Some(self.build_token(token_type));
                 }
                 None => {}
@@ -110,8 +186,23 @@ impl Tokenizer {
     }
 
     fn consume_whitespace(&mut self) -> Token {
-        let char = self.buffer.read_char().unwrap();
+        let char = self.buffer.peek_char().unwrap();
         assert!(char.is_whitespace());
+
+        loop {
+            match self.buffer.peek_char() {
+                Some('\r') | Some('\n') => return self.consume_newline(),
+                Some(c) if c.is_whitespace() => self.buffer.advance(1),
+                _ => break,
+            }
+        }
+
+        self.build_token(TokenType::Whitespace)
+    }
+
+    fn consume_newline(&mut self) -> Token {
+        let char = self.buffer.read_char().unwrap();
+        assert!(char == '\n' || char == '\r');
 
         match char {
             // newlines
@@ -123,17 +214,19 @@ impl Tokenizer {
                         self.buffer.advance(1);
                         self.build_token(TokenType::Newline)
                     }
+
+                    // TODO: treat this as encoding error?
                     _ => self.build_token(TokenType::Whitespace),
                 }
             }
-
-            // whitespace
-            _ => self.build_token(TokenType::Whitespace),
+            _ => unreachable!(),
         }
     }
 
-    fn consume_string(&mut self) -> Token {
-        assert_eq!(self.buffer.read_char().unwrap(), '\"');
+    fn consume_string(&mut self, skip_initial: bool) -> Token {
+        if skip_initial {
+            self.buffer.advance(1);
+        }
 
         let mut content = String::new();
 
@@ -147,10 +240,10 @@ impl Tokenizer {
                         Some('n') => content.push('\n'),
                         Some('r') => content.push('\r'),
                         Some('t') => content.push('\t'),
-                        Some('"') => content.push('\"'),
+                        Some('"') => content.push('"'),
                         Some('\\') => content.push('\\'),
                         Some(c) => {
-                            // unnecessary escape sequence
+                            // TODO: warning unnecessary escape sequence
                             content.push(c);
                         }
                         None => {
@@ -159,12 +252,35 @@ impl Tokenizer {
                         }
                     }
                 }
+                Some(c) if c == '$' => match self.buffer.peek_char() {
+                    Some('{') => {
+                        self.buffer.advance(1);
+                        self.mode = TokenizerMode::InterpolatedExpression;
+                        self.interpolation_stack.push(self.bracket_stack.len());
+                        self.bracket_stack.push(TokenType::LeftBrace);
+                        return self.build_token(TokenType::FormatStringPart(content));
+                    }
+                    Some(char) if char.is_identifier_begin() => {
+                        self.mode = TokenizerMode::InterpolatedIdentifier;
+                        return self.build_token(TokenType::FormatStringPart(content));
+                    }
+                    Some(_) => content.push(c),
+                    None => {
+                        return self.build_token(TokenType::Error(UnclosedStringLiteral));
+                    }
+                },
                 Some(c) => content.push(c),
                 None => {
                     // unclosed string literal
                     return self.build_token(TokenType::Error(UnclosedStringLiteral));
                 }
             }
+        }
+
+        if self.interpolation_stack.is_empty() {
+            self.mode = TokenizerMode::TopLevel;
+        } else {
+            self.mode = TokenizerMode::InterpolatedExpression;
         }
 
         self.build_token(TokenType::String(content))
@@ -267,6 +383,11 @@ impl Tokenizer {
 
         let window_text = self.buffer.window_as_str();
         let token_type = TokenType::try_keyword_or_identifier(window_text);
+
+        if self.mode == TokenizerMode::InterpolatedIdentifier {
+            self.mode = TokenizerMode::String;
+        }
+
         self.build_token(token_type)
     }
 
@@ -332,15 +453,16 @@ impl CharType for char {
 
 #[cfg(test)]
 mod tests {
-    use crate::charly::tokenizer::Tokenizer;
+    use super::*;
 
-    fn assert_tokens(source: &str, expected_tokens: Vec<&str>) {
+    #[track_caller]
+    fn assert_tokens(source: &str, detail_level: TokenDetailLevel, expected_tokens: Vec<&str>) {
         let mut tokenizer = Tokenizer::new(source);
-        let iter = tokenizer.iter_stripped();
+        let iter = tokenizer.iter(detail_level);
         let mut iter = iter.map(|t| format!("{}", t.token_type));
 
-        for expected in expected_tokens {
-            assert_eq!(iter.next().unwrap(), expected);
+        for (index, expected) in expected_tokens.iter().enumerate() {
+            assert_eq!(iter.next().unwrap(), *expected, "at index {}", index);
         }
         assert!(iter.next().is_none());
     }
@@ -354,6 +476,7 @@ mod tests {
 
         assert_tokens(
             source,
+            TokenDetailLevel::NoWhitespaceAndComments,
             vec![
                 "Let",
                 "Identifier(a)",
@@ -376,6 +499,7 @@ mod tests {
         let source = "foo Foo foo_bar FOO_BAR $123 _123";
         assert_tokens(
             source,
+            TokenDetailLevel::NoWhitespaceAndComments,
             vec![
                 "Identifier(foo)",
                 "Identifier(Foo)",
@@ -392,6 +516,7 @@ mod tests {
         let source = "123 0x123 0b1010 0o123 0.25 10.0 123.5 25.foo 25.25.25 25.25.foo";
         assert_tokens(
             source,
+            TokenDetailLevel::NoWhitespaceAndComments,
             vec![
                 "Integer(123)",
                 "Integer(291)",
@@ -424,12 +549,55 @@ mod tests {
         "#;
         assert_tokens(
             source,
+            TokenDetailLevel::NoWhitespaceAndComments,
             vec![
                 r#"String(hello world)"#,
                 "String()",
                 r#"String(hello\nworld)"#,
                 r#"String(\n\r\t\"\\)"#,
                 r#"String(abc)"#,
+            ],
+        );
+    }
+
+    #[test]
+    fn tokenize_format_strings() {
+        let source = r#"
+            "hello $name!"
+            "$foo"
+            "$foo $bar"
+            "${foo} ${bar}"
+            "${foo + bar}"
+            "foo${"foo"}foo"
+        "#;
+        assert_tokens(
+            source,
+            TokenDetailLevel::NoWhitespaceAndComments,
+            vec![
+                "FormatStringPart(hello )",
+                "Identifier(name)",
+                "String(!)",
+                "FormatStringPart()",
+                "Identifier(foo)",
+                "String()",
+                "FormatStringPart()",
+                "Identifier(foo)",
+                "FormatStringPart( )",
+                "Identifier(bar)",
+                "String()",
+                "FormatStringPart()",
+                "Identifier(foo)",
+                "FormatStringPart( )",
+                "Identifier(bar)",
+                "String()",
+                "FormatStringPart()",
+                "Identifier(foo)",
+                "Operator(Add)",
+                "Identifier(bar)",
+                "String()",
+                "FormatStringPart(foo)",
+                "String(foo)",
+                "String(foo)",
             ],
         );
     }
@@ -447,6 +615,7 @@ foo // single line comment
         "#;
         assert_tokens(
             source,
+            TokenDetailLevel::NoWhitespace,
             vec![
                 "SingleLineComment(single line comment)",
                 "MultiLineComment(\n    multi\n    line\n    comment)",
@@ -475,6 +644,7 @@ foo // single line comment
         "#;
         assert_tokens(
             source,
+            TokenDetailLevel::NoWhitespaceAndComments,
             vec![
                 "True",
                 "False",
@@ -572,6 +742,25 @@ foo // single line comment
                 "RightArrow",
                 "RightThickArrow",
                 "QuestionMark",
+            ],
+        );
+    }
+
+    #[test]
+    fn tokenize_whitespace() {
+        let source = "    foo\n    bar\r\n    baz";
+        assert_tokens(
+            source,
+            TokenDetailLevel::Full,
+            vec![
+                "Whitespace",
+                "Identifier(foo)",
+                "Newline",
+                "Whitespace",
+                "Identifier(bar)",
+                "Newline",
+                "Whitespace",
+                "Identifier(baz)",
             ],
         );
     }

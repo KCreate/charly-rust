@@ -20,6 +20,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+use std::fmt::Display;
+
 #[derive(Debug, Clone)]
 pub struct TextPosition {
     pub byte_offset: usize,
@@ -34,6 +36,18 @@ pub struct TextSpan {
 
     /// exclusive
     pub end: TextPosition,
+}
+
+impl Display for TextPosition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<{}:{}:{}>", self.byte_offset, self.line, self.column)
+    }
+}
+
+impl Display for TextSpan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.start, self.end)
+    }
 }
 
 pub struct WindowBuffer {

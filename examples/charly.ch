@@ -1,20 +1,3 @@
-let a = 25
-let b = 25
-let c = [
-    0,
-    100,
-    -100,
-    100.25,
-    -100.25,
-    0x0123456789,
-    0xff,
-    0xffff,
-    0xffffff,
-    0o1234567,
-    0b01001010010,
-    -0x0123456789,
-    -0xabcdef,
-    -0o1234567,
-    -0b01001010010,
-]
-print("$a + $b = ${a + b}")
+let name = "leonard"
+print("hello ${name}!")
+print("1 + 2 = ${1 + 2}")

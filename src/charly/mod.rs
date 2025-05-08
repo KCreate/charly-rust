@@ -25,7 +25,7 @@ mod tokenizer;
 mod window_buffer;
 
 use crate::charly::token::{Token, TokenType};
-use crate::charly::tokenizer::Tokenizer;
+use crate::charly::tokenizer::{TokenDetailLevel, Tokenizer};
 use crate::{Args, Commands};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -40,8 +40,10 @@ pub fn run(cli: Args) -> ExitCode {
             let path = PathBuf::try_from(filename).expect("Failed to convert filename to path");
             let content = std::fs::read_to_string(&path).expect("Failed to read file");
 
-            let tokenizer = Tokenizer::new(&content);
-            let tokens: Vec<Token> = tokenizer.collect();
+            let mut tokenizer = Tokenizer::new(&content);
+            let tokens: Vec<Token> = tokenizer
+                .iter(TokenDetailLevel::NoWhitespaceAndComments)
+                .collect();
 
             println!("Got {} tokens", tokens.len());
 
@@ -51,8 +53,9 @@ pub fn run(cli: Args) -> ExitCode {
                     TokenType::Whitespace => continue,
                     _ => {
                         let token_type_str = format!("{:?}", token.token_type);
-                        let fmt = format!("{:<32}", token_type_str);
-                        println!("{}: {:?}", fmt, token.raw);
+                        let type_fmt = format!("{:<32}", token_type_str);
+                        let text_fmt = format!("{:<16}", token.raw);
+                        println!("{}: {} {}", type_fmt, text_fmt, token.span);
                     }
                 }
             }
