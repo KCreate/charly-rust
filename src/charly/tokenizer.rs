@@ -20,12 +20,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use crate::charly::token::TokenError::MalformedInteger;
-use crate::charly::token::TokenError::UnclosedStringLiteral;
-use crate::charly::token::TokenError::UnexpectedCharacter;
-use crate::charly::token::TokenError::{MalformedFloat, UnexpectedClosingBracket};
+use crate::charly::diagnostics::{DiagnosticContext, DiagnosticLocation, FileId};
+use crate::charly::token::TokenError::*;
 use crate::charly::token::{Token, TokenType};
-use crate::charly::window_buffer::WindowBuffer;
+use crate::charly::window_buffer::{TextPosition, TextSpan, WindowBuffer};
 use std::str::FromStr;
 
 #[derive(PartialEq)]
@@ -36,8 +34,9 @@ pub enum TokenizerMode {
     InterpolatedIdentifier,
 }
 
-pub struct Tokenizer {
-    buffer: WindowBuffer,
+pub struct Tokenizer<'a> {
+    buffer: WindowBuffer<'a>,
+    file_id: FileId,
     mode: TokenizerMode,
 
     /// contains opened paren, brace and bracket tokens
@@ -46,6 +45,8 @@ pub struct Tokenizer {
     /// contains the size of the bracket_stack the last
     /// time a string interpolation was started
     interpolation_stack: Vec<usize>,
+
+    diagnostic_context: &'a mut DiagnosticContext,
 }
 
 #[allow(dead_code)]
@@ -55,20 +56,22 @@ pub enum TokenDetailLevel {
     NoWhitespaceAndComments,
 }
 
-impl Iterator for Tokenizer {
+impl Iterator for Tokenizer<'_> {
     type Item = Token;
     fn next(&mut self) -> Option<Token> {
         self.read_token()
     }
 }
 
-impl Tokenizer {
-    pub fn new(source: &str) -> Self {
+impl<'a> Tokenizer<'a> {
+    pub fn new(source: &'a str, file_id: FileId, context: &'a mut DiagnosticContext) -> Self {
         Self {
-            buffer: WindowBuffer::from(source),
+            buffer: WindowBuffer::new(source),
+            file_id,
             mode: TokenizerMode::TopLevel,
             bracket_stack: Vec::new(),
             interpolation_stack: Vec::new(),
+            diagnostic_context: context,
         }
     }
 
@@ -90,21 +93,59 @@ impl Tokenizer {
         })
     }
 
-    pub fn read_token(&mut self) -> Option<Token> {
+    fn read_token(&mut self) -> Option<Token> {
+        let token = self.read_token_impl()?;
+
+        match &token.token_type {
+            TokenType::Error(error) => match error {
+                UnexpectedCharacter(character) => {
+                    self.diagnostic_context.error(
+                        format!("Unexpected '{}' character", character).as_str(),
+                        &token.location,
+                        vec![],
+                        vec![],
+                    );
+                }
+                UnclosedStringLiteral => {
+                    self.diagnostic_context.error(
+                        "Unclosed string literal",
+                        &token.location,
+                        vec![],
+                        vec![],
+                    );
+                }
+                MalformedInteger(parse_error) => self.diagnostic_context.error(
+                    format!("Malformed integer ({})", parse_error).as_str(),
+                    &token.location,
+                    vec![],
+                    vec![],
+                ),
+                MalformedFloat(parse_error) => self.diagnostic_context.error(
+                    format!("Malformed float ({})", parse_error).as_str(),
+                    &token.location,
+                    vec![],
+                    vec![],
+                ),
+            },
+            _ => {}
+        }
+
+        Some(token)
+    }
+
+    fn read_token_impl(&mut self) -> Option<Token> {
         self.buffer.reset_window();
 
         let char = self.buffer.peek_char()?;
 
         match self.mode {
             TokenizerMode::String => return Some(self.consume_string(false)),
-            TokenizerMode::InterpolatedIdentifier => return Some(self.consume_identifier()),
+            TokenizerMode::InterpolatedIdentifier => {
+                return Some(self.consume_identifier());
+            }
             _ => {}
         }
 
-        /*
-            TODO:
-            - error reporting
-        */
         let token = match char {
             c if c.is_whitespace() => Some(self.consume_whitespace()),
             c if c.is_identifier_begin() => Some(self.consume_identifier()),
@@ -130,6 +171,8 @@ impl Tokenizer {
         // recognize known operators and punctuators
         for n in (1..=4).rev() {
             let lookahead = self.buffer.peek_str(n);
+
+            // TODO: refactor this mess
             match TokenType::try_token(lookahead) {
                 Some(token_type) => {
                     self.buffer.advance(n);
@@ -157,10 +200,7 @@ impl Tokenizer {
                                         }
                                     }
                                 }
-                                _ => {
-                                    let token_type = TokenType::Error(UnexpectedClosingBracket);
-                                    return Some(self.build_token(token_type));
-                                }
+                                _ => {}
                             }
                         }
 
@@ -178,9 +218,13 @@ impl Tokenizer {
     }
 
     fn build_token(&mut self, token_type: TokenType) -> Token {
+        let location = DiagnosticLocation {
+            file_id: self.file_id,
+            span: self.buffer.window_span.clone(),
+        };
         Token {
             token_type,
-            span: self.buffer.window_span.clone(),
+            location,
             raw: self.buffer.window_as_str().to_string(),
         }
     }
@@ -215,7 +259,6 @@ impl Tokenizer {
                         self.build_token(TokenType::Newline)
                     }
 
-                    // TODO: treat this as encoding error?
                     _ => self.build_token(TokenType::Whitespace),
                 }
             }
@@ -231,27 +274,30 @@ impl Tokenizer {
         let mut content = String::new();
 
         loop {
+            let start_pos = self.buffer.cursor_position();
             match self.buffer.read_char() {
                 Some(c) if c == '\"' => {
                     break;
                 }
-                Some(c) if c == '\\' => {
-                    match self.buffer.read_char() {
-                        Some('n') => content.push('\n'),
-                        Some('r') => content.push('\r'),
-                        Some('t') => content.push('\t'),
-                        Some('"') => content.push('"'),
-                        Some('\\') => content.push('\\'),
-                        Some(c) => {
-                            // TODO: warning unnecessary escape sequence
-                            content.push(c);
-                        }
-                        None => {
-                            // unclosed string literal
-                            return self.build_token(TokenType::Error(UnclosedStringLiteral));
-                        }
+                Some(c) if c == '\\' => match self.buffer.read_char() {
+                    Some('n') => content.push('\n'),
+                    Some('r') => content.push('\r'),
+                    Some('t') => content.push('\t'),
+                    Some('"') => content.push('"'),
+                    Some('\\') => content.push('\\'),
+                    Some(c) => {
+                        let end_pos = self.buffer.cursor_position();
+                        let loc = self.build_location(&start_pos, &end_pos);
+                        self.diagnostic_context.warning(
+                            "Unnecessary escape sequence",
+                            &loc,
+                            vec![(None, loc.clone())],
+                            vec![],
+                        );
+                        content.push(c);
                     }
-                }
+                    None => return self.build_token(TokenType::Error(UnclosedStringLiteral)),
+                },
                 Some(c) if c == '$' => match self.buffer.peek_char() {
                     Some('{') => {
                         self.buffer.advance(1);
@@ -265,15 +311,10 @@ impl Tokenizer {
                         return self.build_token(TokenType::FormatStringPart(content));
                     }
                     Some(_) => content.push(c),
-                    None => {
-                        return self.build_token(TokenType::Error(UnclosedStringLiteral));
-                    }
+                    None => return self.build_token(TokenType::Error(UnclosedStringLiteral)),
                 },
                 Some(c) => content.push(c),
-                None => {
-                    // unclosed string literal
-                    return self.build_token(TokenType::Error(UnclosedStringLiteral));
-                }
+                None => return self.build_token(TokenType::Error(UnclosedStringLiteral)),
             }
         }
 
@@ -429,6 +470,16 @@ impl Tokenizer {
         let comment = &window_text[2..window_text.len() - 2].trim_end();
         self.build_token(TokenType::MultiLineComment(comment.to_string()))
     }
+
+    fn build_location(&self, start: &TextPosition, end: &TextPosition) -> DiagnosticLocation {
+        DiagnosticLocation {
+            file_id: self.file_id,
+            span: TextSpan {
+                start: start.clone(),
+                end: end.clone(),
+            },
+        }
+    }
 }
 
 trait CharType {
@@ -454,21 +505,59 @@ impl CharType for char {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::charly::diagnostics::DiagnosticController;
+    use std::path::PathBuf;
 
     #[track_caller]
-    fn assert_tokens(source: &str, detail_level: TokenDetailLevel, expected_tokens: Vec<&str>) {
-        let mut tokenizer = Tokenizer::new(source);
-        let iter = tokenizer.iter(detail_level);
-        let mut iter = iter.map(|t| format!("{}", t.token_type));
+    fn assert_tokens(
+        source: &str,
+        detail_level: TokenDetailLevel,
+        expected_tokens: Vec<&str>,
+        expected_diagnostic_messages: Vec<String>,
+    ) {
+        let mut controller = DiagnosticController::new();
+        let path = PathBuf::from("test");
+        let file_id = controller.register_file(&path, source);
+        let context = controller.get_or_create_context(file_id);
+
+        let tokens: Vec<Token> = {
+            let mut tokenizer = Tokenizer::new(source, file_id, context);
+            tokenizer.iter(detail_level).collect()
+        };
+
+        let mut iter = tokens.iter().map(|t| format!("{}", t.token_type));
 
         for (index, expected) in expected_tokens.iter().enumerate() {
             assert_eq!(iter.next().unwrap(), *expected, "at index {}", index);
         }
         assert!(iter.next().is_none());
+
+        for diagnostic_message in &context.messages {
+            let was_expected = expected_diagnostic_messages
+                .iter()
+                .find(|message| diagnostic_message.title.eq(*message));
+            assert!(
+                was_expected.is_some(),
+                "Unexpected diagnostic message: {}",
+                diagnostic_message.title
+            );
+        }
+
+        for expected_message in expected_diagnostic_messages {
+            let was_expected = &context
+                .messages
+                .iter()
+                .find(|message| expected_message.eq(&message.title));
+            assert!(
+                was_expected.is_some(),
+                "Expected diagnostic message not found: {}",
+                expected_message
+            );
+        }
     }
 
     #[test]
-    fn tokenize_simple_program() {
+    fn test_tokenize_simple_program() {
         let source = r#"
             let a = 200
             if a > 100 print("hello world")
@@ -491,11 +580,12 @@ mod tests {
                 "String(hello world)",
                 "RightParen",
             ],
+            vec![],
         );
     }
 
     #[test]
-    fn tokenize_identifiers() {
+    fn test_tokenize_identifiers() {
         let source = "foo Foo foo_bar FOO_BAR $123 _123";
         assert_tokens(
             source,
@@ -508,11 +598,12 @@ mod tests {
                 "Identifier($123)",
                 "Identifier(_123)",
             ],
+            vec![],
         );
     }
 
     #[test]
-    fn tokenize_numbers() {
+    fn test_tokenize_numbers() {
         let source = "123 0x123 0b1010 0o123 0.25 10.0 123.5 25.foo 25.25.25 25.25.foo";
         assert_tokens(
             source,
@@ -535,17 +626,17 @@ mod tests {
                 "Dot",
                 "Identifier(foo)",
             ],
+            vec![],
         );
     }
 
     #[test]
-    fn tokenize_strings() {
+    fn test_tokenize_strings() {
         let source = r#"
             "hello world"
             ""
             "hello\nworld"
             "\n\r\t\"\\"
-            "\a\b\c"
         "#;
         assert_tokens(
             source,
@@ -555,13 +646,26 @@ mod tests {
                 "String()",
                 r#"String(hello\nworld)"#,
                 r#"String(\n\r\t\"\\)"#,
-                r#"String(abc)"#,
             ],
+            vec![],
         );
     }
 
     #[test]
-    fn tokenize_format_strings() {
+    fn test_tokenize_unnecessary_string_escapes() {
+        let source = r#"
+            "\a\b\c"
+        "#;
+        assert_tokens(
+            source,
+            TokenDetailLevel::NoWhitespaceAndComments,
+            vec![r#"String(abc)"#],
+            vec!["Unnecessary escape sequence".to_string()],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_format_strings() {
         let source = r#"
             "hello $name!"
             "$foo"
@@ -599,11 +703,12 @@ mod tests {
                 "String(foo)",
                 "String(foo)",
             ],
+            vec![],
         );
     }
 
     #[test]
-    fn tokenize_comments() {
+    fn test_tokenize_comments() {
         let source = r#"
 // single line comment
 /*
@@ -622,11 +727,12 @@ foo // single line comment
                 "Identifier(foo)",
                 "SingleLineComment(single line comment)",
             ],
+            vec![],
         );
     }
 
     #[test]
-    fn tokenize_keywords_and_punctuators() {
+    fn test_tokenize_keywords_and_punctuators() {
         let source = r#"
             true false null super
 
@@ -743,11 +849,12 @@ foo // single line comment
                 "RightThickArrow",
                 "QuestionMark",
             ],
+            vec![],
         );
     }
 
     #[test]
-    fn tokenize_whitespace() {
+    fn test_tokenize_whitespace() {
         let source = "    foo\n    bar\r\n    baz";
         assert_tokens(
             source,
@@ -762,6 +869,29 @@ foo // single line comment
                 "Whitespace",
                 "Identifier(baz)",
             ],
+            vec![],
+        );
+    }
+
+    #[test]
+    fn test_unexpected_character() {
+        let source = "ä";
+        assert_tokens(
+            source,
+            TokenDetailLevel::Full,
+            vec!["Error(UnexpectedCharacter('ä'))"],
+            vec!["Unexpected 'ä' character".to_string()],
+        );
+    }
+
+    #[test]
+    fn test_unclosed_string_literal() {
+        let source = "\"hello world";
+        assert_tokens(
+            source,
+            TokenDetailLevel::Full,
+            vec!["Error(UnclosedStringLiteral)"],
+            vec!["Unclosed string literal".to_string()],
         );
     }
 }

@@ -48,11 +48,14 @@ struct DebugArgs {
     #[arg(help_heading = "Debug", long, help = "Disable IR optimizations")]
     disable_ir_opt: bool,
 
-    #[arg(help_heading = "Debug", long, help = "Dump AST to stdout")]
-    dump_ast: bool,
+    #[arg(help_heading = "Debug", long, help = "Dump tokens to stdout")]
+    dump_tokens: bool,
 
     #[arg(help_heading = "Debug", long, help = "Dump CST to stdout")]
     dump_cst: bool,
+
+    #[arg(help_heading = "Debug", long, help = "Dump AST to stdout")]
+    dump_ast: bool,
 
     #[arg(help_heading = "Debug", long, help = "Dump IR to stdout")]
     dump_ir: bool,

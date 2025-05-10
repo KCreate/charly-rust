@@ -20,14 +20,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use crate::charly::window_buffer::TextSpan;
+use crate::charly::diagnostics::DiagnosticLocation;
 use std::fmt::{Display, Formatter};
 use std::num::{ParseFloatError, ParseIntError};
 
 #[derive(Debug)]
 pub struct Token {
     pub token_type: TokenType,
-    pub span: TextSpan,
+    pub location: DiagnosticLocation,
     pub raw: String,
 }
 
@@ -37,7 +37,6 @@ pub enum TokenError {
     UnclosedStringLiteral,
     MalformedInteger(ParseIntError),
     MalformedFloat(ParseFloatError),
-    UnexpectedClosingBracket,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -301,6 +300,109 @@ impl TokenType {
             _ => None,
         }
     }
+
+    pub fn to_raw(&self) -> String {
+        match self {
+            TokenType::Error(_) => "<error>",
+            TokenType::Integer(value) => return format!("{}", value).as_str().to_string(),
+            TokenType::Float(value) => return format!("{}", value).as_str().to_string(),
+            TokenType::String(value) => return format!("\"{}\"", value).as_str().to_string(),
+            TokenType::FormatStringPart(part) => part,
+            TokenType::Identifier(value) => value,
+            TokenType::True => "true",
+            TokenType::False => "false",
+            TokenType::Null => "null",
+            TokenType::Super => "super",
+            TokenType::As => "as",
+            TokenType::Assert => "assert",
+            TokenType::Await => "await",
+            TokenType::Break => "break",
+            TokenType::Builtin => "builtin",
+            TokenType::Case => "case",
+            TokenType::Catch => "catch",
+            TokenType::Class => "class",
+            TokenType::Const => "const",
+            TokenType::Continue => "continue",
+            TokenType::Default => "default",
+            TokenType::Defer => "defer",
+            TokenType::Do => "do",
+            TokenType::Else => "else",
+            TokenType::Export => "export",
+            TokenType::Extends => "extends",
+            TokenType::Final => "final",
+            TokenType::Finally => "finally",
+            TokenType::For => "for",
+            TokenType::From => "from",
+            TokenType::Fn => "fn",
+            TokenType::Guard => "guard",
+            TokenType::If => "if",
+            TokenType::Import => "import",
+            TokenType::In => "in",
+            TokenType::Instanceof => "instanceof",
+            TokenType::Let => "let",
+            TokenType::Loop => "loop",
+            TokenType::Match => "match",
+            TokenType::Private => "private",
+            TokenType::Return => "return",
+            TokenType::Spawn => "spawn",
+            TokenType::Static => "static",
+            TokenType::Switch => "switch",
+            TokenType::Throw => "throw",
+            TokenType::Try => "try",
+            TokenType::Typeof => "typeof",
+            TokenType::Unless => "unless",
+            TokenType::Until => "until",
+            TokenType::While => "while",
+            TokenType::Operator(operator) | TokenType::OperatorAssign(operator) => match operator {
+                OperatorType::Add => "+",
+                OperatorType::Sub => "-",
+                OperatorType::Mul => "*",
+                OperatorType::Div => "/",
+                OperatorType::Mod => "%",
+                OperatorType::Pow => "**",
+                OperatorType::And => "&&",
+                OperatorType::Or => "||",
+                OperatorType::BitOr => "|",
+                OperatorType::BitAnd => "&",
+                OperatorType::BitXor => "^",
+                OperatorType::BitLeftShift => "<<",
+                OperatorType::BitRightShift => ">>",
+                OperatorType::BitUnsignedRightShift => ">>>",
+                OperatorType::Not => "!",
+                OperatorType::BitNot => "~",
+            },
+            TokenType::ComparisonOp(operator) => match operator {
+                ComparisonOperatorType::Eq => "==",
+                ComparisonOperatorType::Neq => "!=",
+                ComparisonOperatorType::Gt => ">",
+                ComparisonOperatorType::Gte => ">=",
+                ComparisonOperatorType::Lt => "<",
+                ComparisonOperatorType::Lte => "<=",
+            },
+            TokenType::Assign => "=",
+            TokenType::LeftParen => "(",
+            TokenType::RightParen => ")",
+            TokenType::LeftBrace => "{",
+            TokenType::RightBrace => "}",
+            TokenType::LeftBracket => "[",
+            TokenType::RightBracket => "]",
+            TokenType::Dot => ".",
+            TokenType::DoubleDot => "..",
+            TokenType::TripleDot => "...",
+            TokenType::Colon => ":",
+            TokenType::Semicolon => ";",
+            TokenType::Comma => ",",
+            TokenType::AtSign => "@",
+            TokenType::LeftArrow => "<-",
+            TokenType::RightArrow => "->",
+            TokenType::RightThickArrow => "=>",
+            TokenType::QuestionMark => "?",
+            TokenType::Whitespace => " ",
+            TokenType::Newline => "\n",
+            _ => "foo",
+        }
+        .to_string()
+    }
 }
 
 impl Display for TokenType {
@@ -309,13 +411,19 @@ impl Display for TokenType {
             TokenType::Error(error) => write!(f, "Error({:?})", error),
             TokenType::Integer(value) => write!(f, "Integer({})", value),
             TokenType::Float(value) => write!(f, "Float({})", value),
-            TokenType::String(value) => write!(f, "String({})", value.escape_debug()),
+            TokenType::String(value) => {
+                write!(f, "String({})", value.escape_debug())
+            }
             TokenType::FormatStringPart(value) => {
                 write!(f, "FormatStringPart({})", value.escape_debug())
             }
             TokenType::Identifier(value) => write!(f, "Identifier({})", value),
-            TokenType::SingleLineComment(value) => write!(f, "SingleLineComment({})", value),
-            TokenType::MultiLineComment(value) => write!(f, "MultiLineComment({})", value),
+            TokenType::SingleLineComment(value) => {
+                write!(f, "SingleLineComment({})", value)
+            }
+            TokenType::MultiLineComment(value) => {
+                write!(f, "MultiLineComment({})", value)
+            }
             _ => write!(f, "{:?}", self),
         }
     }

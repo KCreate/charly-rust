@@ -20,10 +20,12 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+mod diagnostics;
 mod token;
 mod tokenizer;
 mod window_buffer;
 
+use crate::charly::diagnostics::DiagnosticController;
 use crate::charly::token::{Token, TokenType};
 use crate::charly::tokenizer::{TokenDetailLevel, Tokenizer};
 use crate::{Args, Commands};
@@ -35,30 +37,37 @@ pub fn run(cli: Args) -> ExitCode {
         Commands::Run {
             filename,
             runtime_args: _,
-            debug_args: _,
+            debug_args,
         } => {
-            let path = PathBuf::try_from(filename).expect("Failed to convert filename to path");
-            let content = std::fs::read_to_string(&path).expect("Failed to read file");
+            let path = PathBuf::try_from(&filename).unwrap();
+            let content = std::fs::read_to_string(&path).unwrap();
 
-            let mut tokenizer = Tokenizer::new(&content);
+            let mut controller = DiagnosticController::new();
+            let file_id = controller.register_file(&path, content.as_str());
+            let context = controller.get_or_create_context(file_id);
+
+            let mut tokenizer = Tokenizer::new(content.as_str(), file_id, context);
             let tokens: Vec<Token> = tokenizer
                 .iter(TokenDetailLevel::NoWhitespaceAndComments)
                 .collect();
 
-            println!("Got {} tokens", tokens.len());
-
-            for token in tokens {
-                match token.token_type {
-                    TokenType::Newline => continue,
-                    TokenType::Whitespace => continue,
-                    _ => {
-                        let token_type_str = format!("{:?}", token.token_type);
-                        let type_fmt = format!("{:<32}", token_type_str);
-                        let text_fmt = format!("{:<16}", token.raw);
-                        println!("{}: {} {}", type_fmt, text_fmt, token.span);
+            if debug_args.dump_tokens {
+                println!("Got {} tokens", tokens.len());
+                for token in &tokens {
+                    match &token.token_type {
+                        TokenType::Newline => continue,
+                        TokenType::Whitespace => continue,
+                        _ => {
+                            let token_type_str = format!("{:?}", token.token_type);
+                            let type_fmt = format!("{:<32}", token_type_str);
+                            let text_fmt = format!("{:<16}", token.raw);
+                            println!("{}: {} {}", type_fmt, text_fmt, token.location.span);
+                        }
                     }
                 }
             }
+
+            controller.print_diagnostics();
         }
     }
 

@@ -25,16 +25,13 @@ use std::fmt::Display;
 #[derive(Debug, Clone)]
 pub struct TextPosition {
     pub byte_offset: usize,
-    pub line: usize,
-    pub column: usize,
+    pub line: u32,
+    pub column: u32,
 }
 
 #[derive(Debug, Clone)]
 pub struct TextSpan {
-    /// inclusive
     pub start: TextPosition,
-
-    /// exclusive
     pub end: TextPosition,
 }
 
@@ -50,24 +47,16 @@ impl Display for TextSpan {
     }
 }
 
-pub struct WindowBuffer {
-    buffer: String,
+pub struct WindowBuffer<'a> {
+    buffer: &'a str,
     pub window_span: TextSpan,
     pub last_read_char: Option<char>,
 }
 
-impl From<&str> for WindowBuffer {
-    fn from(value: &str) -> Self {
-        let mut buffer = Self::with_capacity(value.len());
-        buffer.push_str(value);
-        buffer
-    }
-}
-
-impl WindowBuffer {
-    pub fn with_capacity(initial_capacity: usize) -> Self {
+impl<'a> WindowBuffer<'a> {
+    pub fn new(value: &'a str) -> Self {
         Self {
-            buffer: String::with_capacity(initial_capacity),
+            buffer: value,
             window_span: TextSpan {
                 start: TextPosition {
                     byte_offset: 0,
@@ -82,10 +71,6 @@ impl WindowBuffer {
             },
             last_read_char: None,
         }
-    }
-
-    pub fn push_str(&mut self, value: &str) {
-        self.buffer.push_str(value);
     }
 
     pub fn read_char(&mut self) -> Option<char> {
@@ -174,5 +159,9 @@ impl WindowBuffer {
 
     pub fn reset_window(&mut self) {
         self.window_span.start = self.window_span.end.clone();
+    }
+
+    pub fn cursor_position(&self) -> TextPosition {
+        self.window_span.end.clone()
     }
 }
