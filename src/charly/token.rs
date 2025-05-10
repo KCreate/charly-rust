@@ -26,9 +26,48 @@ use std::num::{ParseFloatError, ParseIntError};
 
 #[derive(Debug)]
 pub struct Token {
-    pub token_type: TokenType,
+    pub kind: TokenKind,
     pub location: DiagnosticLocation,
     pub raw: String,
+    pub value: Option<TokenValue>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum TokenValue {
+    Integer(i64),
+    Float(f64),
+    String(String),
+    Error(TokenError),
+}
+
+impl Token {
+    pub fn integer_value(&self) -> i64 {
+        match self.value {
+            Some(TokenValue::Integer(value)) => value,
+            _ => panic!("Token is not an integer"),
+        }
+    }
+
+    pub fn float_value(&self) -> f64 {
+        match self.value {
+            Some(TokenValue::Float(value)) => value,
+            _ => panic!("Token is not a float"),
+        }
+    }
+
+    pub fn string_value(&self) -> &String {
+        match &self.value {
+            Some(TokenValue::String(value)) => value,
+            _ => panic!("Token is not a string"),
+        }
+    }
+
+    pub fn error_value(&self) -> &TokenError {
+        match &self.value {
+            Some(TokenValue::Error(value)) => value,
+            _ => panic!("Token is not an error"),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -39,16 +78,17 @@ pub enum TokenError {
     MalformedFloat(ParseFloatError),
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub enum TokenType {
-    Error(TokenError),
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum TokenKind {
+    Error,
+    Eof,
 
     // literals
-    Integer(i64),
-    Float(f64),
-    String(String),
-    FormatStringPart(String),
-    Identifier(String),
+    Integer,
+    Float,
+    String,
+    FormatStringPart,
+    Identifier,
 
     // literal keywords
     True,
@@ -99,10 +139,45 @@ pub enum TokenType {
     While,
 
     // operators
-    Operator(OperatorType),
-    ComparisonOp(ComparisonOperatorType),
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Pow,
+    And,
+    Or,
+    BitOr,
+    BitAnd,
+    BitXor,
+    BitLeftShift,
+    BitRightShift,
+    BitUnsignedRightShift,
+    Not,
+    BitNot,
+
+    // comparison operators
+    Eq,
+    Neq,
+    Gt,
+    Gte,
+    Lt,
+    Lte,
+
+    // assign operators
     Assign,
-    OperatorAssign(OperatorType),
+    AssignAdd,
+    AssignSub,
+    AssignMul,
+    AssignDiv,
+    AssignMod,
+    AssignPow,
+    AssignBitOr,
+    AssignBitAnd,
+    AssignBitXor,
+    AssignBitLeftShift,
+    AssignBitRightShift,
+    AssignBitUnsignedRightShift,
 
     // punctuation
     LeftParen,
@@ -126,305 +201,202 @@ pub enum TokenType {
     // whitespace
     Whitespace,
     Newline,
-    SingleLineComment(String),
-    MultiLineComment(String),
+    SingleLineComment,
+    MultiLineComment,
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub enum OperatorType {
-    // binary operators
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Mod,
-    Pow,
-    And,
-    Or,
+pub static TOKEN_TEXT_MAPPING: &[(&str, TokenKind)] = &[
+    ("as", TokenKind::As),
+    ("assert", TokenKind::Assert),
+    ("await", TokenKind::Await),
+    ("break", TokenKind::Break),
+    ("builtin", TokenKind::Builtin),
+    ("case", TokenKind::Case),
+    ("catch", TokenKind::Catch),
+    ("class", TokenKind::Class),
+    ("const", TokenKind::Const),
+    ("continue", TokenKind::Continue),
+    ("default", TokenKind::Default),
+    ("defer", TokenKind::Defer),
+    ("do", TokenKind::Do),
+    ("else", TokenKind::Else),
+    ("export", TokenKind::Export),
+    ("extends", TokenKind::Extends),
+    ("false", TokenKind::False),
+    ("final", TokenKind::Final),
+    ("finally", TokenKind::Finally),
+    ("fn", TokenKind::Fn),
+    ("for", TokenKind::For),
+    ("from", TokenKind::From),
+    ("guard", TokenKind::Guard),
+    ("if", TokenKind::If),
+    ("import", TokenKind::Import),
+    ("in", TokenKind::In),
+    ("instanceof", TokenKind::Instanceof),
+    ("let", TokenKind::Let),
+    ("loop", TokenKind::Loop),
+    ("match", TokenKind::Match),
+    ("null", TokenKind::Null),
+    ("private", TokenKind::Private),
+    ("return", TokenKind::Return),
+    ("spawn", TokenKind::Spawn),
+    ("static", TokenKind::Static),
+    ("super", TokenKind::Super),
+    ("switch", TokenKind::Switch),
+    ("throw", TokenKind::Throw),
+    ("true", TokenKind::True),
+    ("try", TokenKind::Try),
+    ("typeof", TokenKind::Typeof),
+    ("unless", TokenKind::Unless),
+    ("until", TokenKind::Until),
+    ("while", TokenKind::While),
+    ("+", TokenKind::Add),
+    ("-", TokenKind::Sub),
+    ("*", TokenKind::Mul),
+    ("/", TokenKind::Div),
+    ("%", TokenKind::Mod),
+    ("**", TokenKind::Pow),
+    ("&&", TokenKind::And),
+    ("||", TokenKind::Or),
+    ("|", TokenKind::BitOr),
+    ("&", TokenKind::BitAnd),
+    ("^", TokenKind::BitXor),
+    ("<<", TokenKind::BitLeftShift),
+    (">>", TokenKind::BitRightShift),
+    (">>>", TokenKind::BitUnsignedRightShift),
+    ("!", TokenKind::Not),
+    ("~", TokenKind::BitNot),
+    ("==", TokenKind::Eq),
+    ("!=", TokenKind::Neq),
+    (">", TokenKind::Gt),
+    (">=", TokenKind::Gte),
+    ("<", TokenKind::Lt),
+    ("<=", TokenKind::Lte),
+    ("=", TokenKind::Assign),
+    ("+=", TokenKind::AssignAdd),
+    ("-=", TokenKind::AssignSub),
+    ("*=", TokenKind::AssignMul),
+    ("/=", TokenKind::AssignDiv),
+    ("%=", TokenKind::AssignMod),
+    ("**=", TokenKind::AssignPow),
+    ("|=", TokenKind::AssignBitOr),
+    ("&=", TokenKind::AssignBitAnd),
+    ("^=", TokenKind::AssignBitXor),
+    ("<<=", TokenKind::AssignBitLeftShift),
+    (">>=", TokenKind::AssignBitRightShift),
+    (">>>=", TokenKind::AssignBitUnsignedRightShift),
+    ("(", TokenKind::LeftParen),
+    (")", TokenKind::RightParen),
+    ("{", TokenKind::LeftBrace),
+    ("}", TokenKind::RightBrace),
+    ("[", TokenKind::LeftBracket),
+    ("]", TokenKind::RightBracket),
+    (".", TokenKind::Dot),
+    ("..", TokenKind::DoubleDot),
+    ("...", TokenKind::TripleDot),
+    (":", TokenKind::Colon),
+    (";", TokenKind::Semicolon),
+    (",", TokenKind::Comma),
+    ("@", TokenKind::AtSign),
+    ("<-", TokenKind::LeftArrow),
+    ("->", TokenKind::RightArrow),
+    ("=>", TokenKind::RightThickArrow),
+    ("?", TokenKind::QuestionMark),
+];
 
-    // bitwise binary operators
-    BitOr,
-    BitAnd,
-    BitXor,
-    BitLeftShift,
-    BitRightShift,
-    BitUnsignedRightShift,
+pub static TOKEN_ASSIGN_OPERATOR_MAPPING: &[(TokenKind, TokenKind)] = &[
+    (TokenKind::AssignAdd, TokenKind::Add),
+    (TokenKind::AssignSub, TokenKind::Sub),
+    (TokenKind::AssignMul, TokenKind::Mul),
+    (TokenKind::AssignDiv, TokenKind::Div),
+    (TokenKind::AssignMod, TokenKind::Mod),
+    (TokenKind::AssignPow, TokenKind::Pow),
+    (TokenKind::AssignBitOr, TokenKind::BitOr),
+    (TokenKind::AssignBitAnd, TokenKind::BitAnd),
+    (TokenKind::AssignBitXor, TokenKind::BitXor),
+    (TokenKind::AssignBitLeftShift, TokenKind::BitLeftShift),
+    (TokenKind::AssignBitRightShift, TokenKind::BitRightShift),
+    (
+        TokenKind::AssignBitUnsignedRightShift,
+        TokenKind::BitUnsignedRightShift,
+    ),
+];
 
-    // unary operators
-    Not,
-    BitNot,
-}
+pub static TOKEN_BRACE_PAIR_MAPPING: &[(TokenKind, TokenKind)] = &[
+    (TokenKind::LeftBrace, TokenKind::RightBrace),
+    (TokenKind::LeftBracket, TokenKind::RightBracket),
+    (TokenKind::LeftParen, TokenKind::RightParen),
+];
 
-#[derive(Debug, PartialEq, Clone)]
-pub enum ComparisonOperatorType {
-    Eq,
-    Neq,
-    Gt,
-    Gte,
-    Lt,
-    Lte,
-}
-
-impl TokenType {
-    pub fn try_token(value: Option<&str>) -> Option<TokenType> {
-        match value? {
-            "+" => Some(TokenType::Operator(OperatorType::Add)),
-            "-" => Some(TokenType::Operator(OperatorType::Sub)),
-            "*" => Some(TokenType::Operator(OperatorType::Mul)),
-            "/" => Some(TokenType::Operator(OperatorType::Div)),
-            "%" => Some(TokenType::Operator(OperatorType::Mod)),
-            "|" => Some(TokenType::Operator(OperatorType::BitOr)),
-            "&" => Some(TokenType::Operator(OperatorType::BitAnd)),
-            "^" => Some(TokenType::Operator(OperatorType::BitXor)),
-            "!" => Some(TokenType::Operator(OperatorType::Not)),
-            "~" => Some(TokenType::Operator(OperatorType::BitNot)),
-            "=" => Some(TokenType::Assign),
-            "(" => Some(TokenType::LeftParen),
-            ")" => Some(TokenType::RightParen),
-            "{" => Some(TokenType::LeftBrace),
-            "}" => Some(TokenType::RightBrace),
-            "[" => Some(TokenType::LeftBracket),
-            "]" => Some(TokenType::RightBracket),
-            "." => Some(TokenType::Dot),
-            ":" => Some(TokenType::Colon),
-            ";" => Some(TokenType::Semicolon),
-            "," => Some(TokenType::Comma),
-            "@" => Some(TokenType::AtSign),
-            "?" => Some(TokenType::QuestionMark),
-            ">" => Some(TokenType::ComparisonOp(ComparisonOperatorType::Gt)),
-            "<" => Some(TokenType::ComparisonOp(ComparisonOperatorType::Lt)),
-
-            "**" => Some(TokenType::Operator(OperatorType::Pow)),
-            "&&" => Some(TokenType::Operator(OperatorType::And)),
-            "||" => Some(TokenType::Operator(OperatorType::Or)),
-            "<<" => Some(TokenType::Operator(OperatorType::BitLeftShift)),
-            ">>" => Some(TokenType::Operator(OperatorType::BitRightShift)),
-            "==" => Some(TokenType::ComparisonOp(ComparisonOperatorType::Eq)),
-            "!=" => Some(TokenType::ComparisonOp(ComparisonOperatorType::Neq)),
-            ">=" => Some(TokenType::ComparisonOp(ComparisonOperatorType::Gte)),
-            "<=" => Some(TokenType::ComparisonOp(ComparisonOperatorType::Lte)),
-            ".." => Some(TokenType::DoubleDot),
-            "<-" => Some(TokenType::LeftArrow),
-            "->" => Some(TokenType::RightArrow),
-            "=>" => Some(TokenType::RightThickArrow),
-            "+=" => Some(TokenType::OperatorAssign(OperatorType::Add)),
-            "-=" => Some(TokenType::OperatorAssign(OperatorType::Sub)),
-            "*=" => Some(TokenType::OperatorAssign(OperatorType::Mul)),
-            "/=" => Some(TokenType::OperatorAssign(OperatorType::Div)),
-            "%=" => Some(TokenType::OperatorAssign(OperatorType::Mod)),
-            "|=" => Some(TokenType::OperatorAssign(OperatorType::BitOr)),
-            "&=" => Some(TokenType::OperatorAssign(OperatorType::BitAnd)),
-            "^=" => Some(TokenType::OperatorAssign(OperatorType::BitXor)),
-
-            "..." => Some(TokenType::TripleDot),
-            ">>>" => Some(TokenType::Operator(OperatorType::BitUnsignedRightShift)),
-            "**=" => Some(TokenType::OperatorAssign(OperatorType::Pow)),
-            "<<=" => Some(TokenType::OperatorAssign(OperatorType::BitLeftShift)),
-            ">>=" => Some(TokenType::OperatorAssign(OperatorType::BitRightShift)),
-
-            ">>>=" => Some(TokenType::OperatorAssign(
-                OperatorType::BitUnsignedRightShift,
-            )),
-            _ => None,
+pub fn try_token(value: &str) -> Option<TokenKind> {
+    for (raw, kind) in TOKEN_TEXT_MAPPING {
+        if *raw == value {
+            return Some(*kind);
         }
     }
 
-    pub fn try_keyword_or_identifier(value: &str) -> TokenType {
-        if let Some(keyword_type) = Self::try_keyword(value) {
-            keyword_type
-        } else {
-            TokenType::Identifier(value.to_string())
+    None
+}
+
+pub fn try_keyword_or_identifier(value: &str) -> TokenKind {
+    let kind = try_token(value);
+    kind.unwrap_or(TokenKind::Identifier)
+}
+
+impl TokenKind {
+    pub fn matching_bracket(&self) -> Option<TokenKind> {
+        for (left, right) in TOKEN_BRACE_PAIR_MAPPING {
+            if left == self {
+                return Some(*right);
+            } else if right == self {
+                return Some(*left);
+            }
         }
-    }
 
-    pub fn try_keyword(value: &str) -> Option<TokenType> {
-        let keyword_type = match value {
-            "true" => TokenType::True,
-            "false" => TokenType::False,
-            "null" => TokenType::Null,
-            "super" => TokenType::Super,
-            "as" => TokenType::As,
-            "assert" => TokenType::Assert,
-            "await" => TokenType::Await,
-            "break" => TokenType::Break,
-            "builtin" => TokenType::Builtin,
-            "case" => TokenType::Case,
-            "catch" => TokenType::Catch,
-            "class" => TokenType::Class,
-            "const" => TokenType::Const,
-            "continue" => TokenType::Continue,
-            "default" => TokenType::Default,
-            "defer" => TokenType::Defer,
-            "do" => TokenType::Do,
-            "else" => TokenType::Else,
-            "export" => TokenType::Export,
-            "extends" => TokenType::Extends,
-            "final" => TokenType::Final,
-            "finally" => TokenType::Finally,
-            "for" => TokenType::For,
-            "from" => TokenType::From,
-            "fn" => TokenType::Fn,
-            "guard" => TokenType::Guard,
-            "if" => TokenType::If,
-            "import" => TokenType::Import,
-            "in" => TokenType::In,
-            "instanceof" => TokenType::Instanceof,
-            "let" => TokenType::Let,
-            "loop" => TokenType::Loop,
-            "match" => TokenType::Match,
-            "private" => TokenType::Private,
-            "return" => TokenType::Return,
-            "spawn" => TokenType::Spawn,
-            "static" => TokenType::Static,
-            "switch" => TokenType::Switch,
-            "throw" => TokenType::Throw,
-            "try" => TokenType::Try,
-            "typeof" => TokenType::Typeof,
-            "unless" => TokenType::Unless,
-            "until" => TokenType::Until,
-            "while" => TokenType::While,
-            _ => return None,
-        };
-
-        Some(keyword_type)
-    }
-
-    pub fn matching_bracket(&self) -> Option<TokenType> {
-        match self {
-            TokenType::LeftParen => Some(TokenType::RightParen),
-            TokenType::LeftBrace => Some(TokenType::RightBrace),
-            TokenType::LeftBracket => Some(TokenType::RightBracket),
-            TokenType::RightParen => Some(TokenType::LeftParen),
-            TokenType::RightBrace => Some(TokenType::LeftBrace),
-            TokenType::RightBracket => Some(TokenType::LeftBracket),
-            _ => None,
-        }
-    }
-
-    pub fn to_raw(&self) -> String {
-        match self {
-            TokenType::Error(_) => "<error>",
-            TokenType::Integer(value) => return format!("{}", value).as_str().to_string(),
-            TokenType::Float(value) => return format!("{}", value).as_str().to_string(),
-            TokenType::String(value) => return format!("\"{}\"", value).as_str().to_string(),
-            TokenType::FormatStringPart(part) => part,
-            TokenType::Identifier(value) => value,
-            TokenType::True => "true",
-            TokenType::False => "false",
-            TokenType::Null => "null",
-            TokenType::Super => "super",
-            TokenType::As => "as",
-            TokenType::Assert => "assert",
-            TokenType::Await => "await",
-            TokenType::Break => "break",
-            TokenType::Builtin => "builtin",
-            TokenType::Case => "case",
-            TokenType::Catch => "catch",
-            TokenType::Class => "class",
-            TokenType::Const => "const",
-            TokenType::Continue => "continue",
-            TokenType::Default => "default",
-            TokenType::Defer => "defer",
-            TokenType::Do => "do",
-            TokenType::Else => "else",
-            TokenType::Export => "export",
-            TokenType::Extends => "extends",
-            TokenType::Final => "final",
-            TokenType::Finally => "finally",
-            TokenType::For => "for",
-            TokenType::From => "from",
-            TokenType::Fn => "fn",
-            TokenType::Guard => "guard",
-            TokenType::If => "if",
-            TokenType::Import => "import",
-            TokenType::In => "in",
-            TokenType::Instanceof => "instanceof",
-            TokenType::Let => "let",
-            TokenType::Loop => "loop",
-            TokenType::Match => "match",
-            TokenType::Private => "private",
-            TokenType::Return => "return",
-            TokenType::Spawn => "spawn",
-            TokenType::Static => "static",
-            TokenType::Switch => "switch",
-            TokenType::Throw => "throw",
-            TokenType::Try => "try",
-            TokenType::Typeof => "typeof",
-            TokenType::Unless => "unless",
-            TokenType::Until => "until",
-            TokenType::While => "while",
-            TokenType::Operator(operator) | TokenType::OperatorAssign(operator) => match operator {
-                OperatorType::Add => "+",
-                OperatorType::Sub => "-",
-                OperatorType::Mul => "*",
-                OperatorType::Div => "/",
-                OperatorType::Mod => "%",
-                OperatorType::Pow => "**",
-                OperatorType::And => "&&",
-                OperatorType::Or => "||",
-                OperatorType::BitOr => "|",
-                OperatorType::BitAnd => "&",
-                OperatorType::BitXor => "^",
-                OperatorType::BitLeftShift => "<<",
-                OperatorType::BitRightShift => ">>",
-                OperatorType::BitUnsignedRightShift => ">>>",
-                OperatorType::Not => "!",
-                OperatorType::BitNot => "~",
-            },
-            TokenType::ComparisonOp(operator) => match operator {
-                ComparisonOperatorType::Eq => "==",
-                ComparisonOperatorType::Neq => "!=",
-                ComparisonOperatorType::Gt => ">",
-                ComparisonOperatorType::Gte => ">=",
-                ComparisonOperatorType::Lt => "<",
-                ComparisonOperatorType::Lte => "<=",
-            },
-            TokenType::Assign => "=",
-            TokenType::LeftParen => "(",
-            TokenType::RightParen => ")",
-            TokenType::LeftBrace => "{",
-            TokenType::RightBrace => "}",
-            TokenType::LeftBracket => "[",
-            TokenType::RightBracket => "]",
-            TokenType::Dot => ".",
-            TokenType::DoubleDot => "..",
-            TokenType::TripleDot => "...",
-            TokenType::Colon => ":",
-            TokenType::Semicolon => ";",
-            TokenType::Comma => ",",
-            TokenType::AtSign => "@",
-            TokenType::LeftArrow => "<-",
-            TokenType::RightArrow => "->",
-            TokenType::RightThickArrow => "=>",
-            TokenType::QuestionMark => "?",
-            TokenType::Whitespace => " ",
-            TokenType::Newline => "\n",
-            _ => "foo",
-        }
-        .to_string()
+        None
     }
 }
 
-impl Display for TokenType {
+impl Display for Token {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TokenType::Error(error) => write!(f, "Error({:?})", error),
-            TokenType::Integer(value) => write!(f, "Integer({})", value),
-            TokenType::Float(value) => write!(f, "Float({})", value),
-            TokenType::String(value) => {
-                write!(f, "String({})", value.escape_debug())
+        match self.kind {
+            TokenKind::Error => {
+                let error_description = match self.error_value() {
+                    TokenError::UnexpectedCharacter(_) => "UnexpectedCharacter",
+                    TokenError::UnclosedStringLiteral => "UnclosedStringLiteral",
+                    TokenError::MalformedInteger(_) => "MalformedInteger",
+                    TokenError::MalformedFloat(_) => "MalformedFloat",
+                };
+                write!(f, "Error({})", error_description)
             }
-            TokenType::FormatStringPart(value) => {
-                write!(f, "FormatStringPart({})", value.escape_debug())
+            TokenKind::Integer => {
+                write!(f, "Integer({})", self.integer_value())
             }
-            TokenType::Identifier(value) => write!(f, "Identifier({})", value),
-            TokenType::SingleLineComment(value) => {
-                write!(f, "SingleLineComment({})", value)
+            TokenKind::Float => {
+                write!(f, "Float({})", self.float_value())
             }
-            TokenType::MultiLineComment(value) => {
-                write!(f, "MultiLineComment({})", value)
+            TokenKind::String => {
+                write!(f, "String({})", self.string_value().escape_debug())
             }
-            _ => write!(f, "{:?}", self),
+            TokenKind::FormatStringPart => {
+                write!(
+                    f,
+                    "FormatStringPart({})",
+                    self.string_value().escape_debug()
+                )
+            }
+            TokenKind::Identifier => {
+                write!(f, "Identifier({})", self.string_value())
+            }
+            TokenKind::SingleLineComment => {
+                write!(f, "SingleLineComment({})", self.string_value())
+            }
+            TokenKind::MultiLineComment => {
+                write!(f, "MultiLineComment({})", self.string_value())
+            }
+            _ => {
+                write!(f, "{:?}", self.kind)
+            }
         }
     }
 }

@@ -21,32 +21,33 @@
 // SOFTWARE.
 
 use crate::charly::diagnostics::{DiagnosticContext, DiagnosticLocation, FileId};
-use crate::charly::token::TokenError::*;
-use crate::charly::token::{Token, TokenType};
+use crate::charly::token::TokenError::{
+    MalformedFloat, MalformedInteger, UnclosedStringLiteral, UnexpectedCharacter,
+};
+use crate::charly::token::{try_keyword_or_identifier, try_token, Token, TokenKind, TokenValue};
 use crate::charly::window_buffer::{TextPosition, TextSpan, WindowBuffer};
 use std::str::FromStr;
 
 #[derive(PartialEq)]
 pub enum TokenizerMode {
-    TopLevel,
-    String,
-    InterpolatedExpression,
-    InterpolatedIdentifier,
+    TopLevel,               // top level parsing, not inside any interpolated expression
+    String,                 // finished parsing interpolated expression, continue parsing string
+    InterpolatedExpression, // currently parsing interpolated expression
+    InterpolatedIdentifier, // currently parsing interpolated identifier
 }
 
 pub struct Tokenizer<'a> {
     buffer: WindowBuffer<'a>,
     file_id: FileId,
     mode: TokenizerMode,
+    diagnostic_context: &'a mut DiagnosticContext,
 
     /// contains opened paren, brace and bracket tokens
-    bracket_stack: Vec<TokenType>,
+    bracket_stack: Vec<TokenKind>,
 
     /// contains the size of the bracket_stack the last
     /// time a string interpolation was started
     interpolation_stack: Vec<usize>,
-
-    diagnostic_context: &'a mut DiagnosticContext,
 }
 
 #[allow(dead_code)]
@@ -59,7 +60,11 @@ pub enum TokenDetailLevel {
 impl Iterator for Tokenizer<'_> {
     type Item = Token;
     fn next(&mut self) -> Option<Token> {
-        self.read_token()
+        let token = self.read_token();
+        match token.kind {
+            TokenKind::Eof => None,
+            _ => Some(token),
+        }
     }
 }
 
@@ -78,26 +83,32 @@ impl<'a> Tokenizer<'a> {
     pub fn iter(&mut self, detail_level: TokenDetailLevel) -> impl Iterator<Item = Token> {
         self.filter(move |t| match detail_level {
             TokenDetailLevel::Full => true,
-            TokenDetailLevel::NoWhitespace => match t.token_type {
-                TokenType::Whitespace => false,
-                TokenType::Newline => false,
+            TokenDetailLevel::NoWhitespace => match t.kind {
+                TokenKind::Whitespace => false,
+                TokenKind::Newline => false,
                 _ => true,
             },
-            TokenDetailLevel::NoWhitespaceAndComments => match t.token_type {
-                TokenType::Whitespace => false,
-                TokenType::Newline => false,
-                TokenType::SingleLineComment(_) => false,
-                TokenType::MultiLineComment(_) => false,
+            TokenDetailLevel::NoWhitespaceAndComments => match t.kind {
+                TokenKind::Whitespace => false,
+                TokenKind::Newline => false,
+                TokenKind::SingleLineComment => false,
+                TokenKind::MultiLineComment => false,
                 _ => true,
             },
         })
     }
 
-    fn read_token(&mut self) -> Option<Token> {
-        let token = self.read_token_impl()?;
+    fn read_token(&mut self) -> Token {
+        let token = self.read_token_impl();
 
-        match &token.token_type {
-            TokenType::Error(error) => match error {
+        if token.is_none() {
+            return self.build_token(TokenKind::Eof, None);
+        }
+
+        let token = token.unwrap();
+
+        match &token.kind {
+            TokenKind::Error => match token.error_value() {
                 UnexpectedCharacter(character) => {
                     self.diagnostic_context.error(
                         format!("Unexpected '{}' character", character).as_str(),
@@ -130,7 +141,7 @@ impl<'a> Tokenizer<'a> {
             _ => {}
         }
 
-        Some(token)
+        token
     }
 
     fn read_token_impl(&mut self) -> Option<Token> {
@@ -170,20 +181,23 @@ impl<'a> Tokenizer<'a> {
 
         // recognize known operators and punctuators
         for n in (1..=4).rev() {
-            let lookahead = self.buffer.peek_str(n);
+            let lookahead = match self.buffer.peek_str(n) {
+                Some(s) => s,
+                None => continue,
+            };
 
             // TODO: refactor this mess
-            match TokenType::try_token(lookahead) {
-                Some(token_type) => {
+            match try_token(lookahead) {
+                Some(kind) => {
                     self.buffer.advance(n);
 
-                    match token_type {
-                        TokenType::LeftParen | TokenType::LeftBrace | TokenType::LeftBracket => {
-                            self.bracket_stack.push(token_type.clone())
+                    match kind {
+                        TokenKind::LeftParen | TokenKind::LeftBrace | TokenKind::LeftBracket => {
+                            self.bracket_stack.push(kind.clone())
                         }
 
-                        TokenType::RightParen | TokenType::RightBrace | TokenType::RightBracket => {
-                            let expected_match = token_type.matching_bracket().unwrap();
+                        TokenKind::RightParen | TokenKind::RightBrace | TokenKind::RightBracket => {
+                            let expected_match = kind.matching_bracket().unwrap();
                             let actual_match = self.bracket_stack.last();
 
                             match actual_match {
@@ -207,25 +221,29 @@ impl<'a> Tokenizer<'a> {
                         _ => {}
                     }
 
-                    return Some(self.build_token(token_type));
+                    return Some(self.build_token(kind, None));
                 }
                 None => {}
             }
         }
 
         self.buffer.advance(1);
-        Some(self.build_token(TokenType::Error(UnexpectedCharacter(char))))
+        Some(self.build_token(
+            TokenKind::Error,
+            Some(TokenValue::Error(UnexpectedCharacter(char))),
+        ))
     }
 
-    fn build_token(&mut self, token_type: TokenType) -> Token {
+    fn build_token(&mut self, kind: TokenKind, value: Option<TokenValue>) -> Token {
         let location = DiagnosticLocation {
             file_id: self.file_id,
             span: self.buffer.window_span.clone(),
         };
         Token {
-            token_type,
+            kind,
             location,
             raw: self.buffer.window_as_str().to_string(),
+            value,
         }
     }
 
@@ -241,7 +259,7 @@ impl<'a> Tokenizer<'a> {
             }
         }
 
-        self.build_token(TokenType::Whitespace)
+        self.build_token(TokenKind::Whitespace, None)
     }
 
     fn consume_newline(&mut self) -> Token {
@@ -250,16 +268,15 @@ impl<'a> Tokenizer<'a> {
 
         match char {
             // newlines
-            '\n' => self.build_token(TokenType::Newline),
+            '\n' => self.build_token(TokenKind::Newline, None),
             '\r' => {
                 let char = self.buffer.peek_char();
                 match char {
                     Some('\n') => {
                         self.buffer.advance(1);
-                        self.build_token(TokenType::Newline)
+                        self.build_token(TokenKind::Newline, None)
                     }
-
-                    _ => self.build_token(TokenType::Whitespace),
+                    _ => self.build_token(TokenKind::Whitespace, None),
                 }
             }
             _ => unreachable!(),
@@ -296,25 +313,46 @@ impl<'a> Tokenizer<'a> {
                         );
                         content.push(c);
                     }
-                    None => return self.build_token(TokenType::Error(UnclosedStringLiteral)),
+                    None => {
+                        return self.build_token(
+                            TokenKind::Error,
+                            Some(TokenValue::Error(UnclosedStringLiteral)),
+                        );
+                    }
                 },
                 Some(c) if c == '$' => match self.buffer.peek_char() {
                     Some('{') => {
                         self.buffer.advance(1);
                         self.mode = TokenizerMode::InterpolatedExpression;
                         self.interpolation_stack.push(self.bracket_stack.len());
-                        self.bracket_stack.push(TokenType::LeftBrace);
-                        return self.build_token(TokenType::FormatStringPart(content));
+                        self.bracket_stack.push(TokenKind::LeftBrace);
+                        return self.build_token(
+                            TokenKind::FormatStringPart,
+                            Some(TokenValue::String(content)),
+                        );
                     }
                     Some(char) if char.is_identifier_begin() => {
                         self.mode = TokenizerMode::InterpolatedIdentifier;
-                        return self.build_token(TokenType::FormatStringPart(content));
+                        return self.build_token(
+                            TokenKind::FormatStringPart,
+                            Some(TokenValue::String(content)),
+                        );
                     }
                     Some(_) => content.push(c),
-                    None => return self.build_token(TokenType::Error(UnclosedStringLiteral)),
+                    None => {
+                        return self.build_token(
+                            TokenKind::Error,
+                            Some(TokenValue::Error(UnclosedStringLiteral)),
+                        );
+                    }
                 },
                 Some(c) => content.push(c),
-                None => return self.build_token(TokenType::Error(UnclosedStringLiteral)),
+                None => {
+                    return self.build_token(
+                        TokenKind::Error,
+                        Some(TokenValue::Error(UnclosedStringLiteral)),
+                    );
+                }
             }
         }
 
@@ -324,7 +362,7 @@ impl<'a> Tokenizer<'a> {
             self.mode = TokenizerMode::InterpolatedExpression;
         }
 
-        self.build_token(TokenType::String(content))
+        self.build_token(TokenKind::String, Some(TokenValue::String(content)))
     }
 
     fn consume_number(&mut self) -> Token {
@@ -368,21 +406,26 @@ impl<'a> Tokenizer<'a> {
             }
         }
 
+        let window_text = self.buffer.window_as_str();
         if found_decimal_point {
-            let window_text = self.buffer.window_as_str();
             let value = f64::from_str(window_text);
 
             match value {
-                Ok(value) => self.build_token(TokenType::Float(value)),
-                Err(err) => self.build_token(TokenType::Error(MalformedFloat(err))),
+                Ok(value) => self.build_token(TokenKind::Float, Some(TokenValue::Float(value))),
+                Err(err) => self.build_token(
+                    TokenKind::Error,
+                    Some(TokenValue::Error(MalformedFloat(err))),
+                ),
             }
         } else {
-            let window_text = self.buffer.window_as_str();
             let value = i64::from_str_radix(window_text, 10);
 
             match value {
-                Ok(value) => self.build_token(TokenType::Integer(value)),
-                Err(err) => self.build_token(TokenType::Error(MalformedInteger(err))),
+                Ok(value) => self.build_token(TokenKind::Integer, Some(TokenValue::Integer(value))),
+                Err(err) => self.build_token(
+                    TokenKind::Error,
+                    Some(TokenValue::Error(MalformedInteger(err))),
+                ),
             }
         }
     }
@@ -404,10 +447,12 @@ impl<'a> Tokenizer<'a> {
         }
 
         let value = i64::from_str_radix(buffer.as_str(), base);
-
         match value {
-            Ok(value) => self.build_token(TokenType::Integer(value)),
-            Err(err) => self.build_token(TokenType::Error(MalformedInteger(err))),
+            Ok(value) => self.build_token(TokenKind::Integer, Some(TokenValue::Integer(value))),
+            Err(err) => self.build_token(
+                TokenKind::Error,
+                Some(TokenValue::Error(MalformedInteger(err))),
+            ),
         }
     }
 
@@ -423,13 +468,18 @@ impl<'a> Tokenizer<'a> {
         }
 
         let window_text = self.buffer.window_as_str();
-        let token_type = TokenType::try_keyword_or_identifier(window_text);
+        let kind = try_keyword_or_identifier(window_text);
 
         if self.mode == TokenizerMode::InterpolatedIdentifier {
             self.mode = TokenizerMode::String;
         }
 
-        self.build_token(token_type)
+        match kind {
+            TokenKind::Identifier => {
+                self.build_token(kind, Some(TokenValue::String(window_text.to_string())))
+            }
+            _ => self.build_token(kind, None),
+        }
     }
 
     fn consume_comment(&mut self) -> Token {
@@ -446,7 +496,10 @@ impl<'a> Tokenizer<'a> {
         let window_text = self.buffer.window_as_str();
         let comment = &window_text[2..].trim();
 
-        self.build_token(TokenType::SingleLineComment(comment.to_string()))
+        self.build_token(
+            TokenKind::SingleLineComment,
+            Some(TokenValue::String(comment.to_string())),
+        )
     }
 
     fn consume_multiline_comment(&mut self) -> Token {
@@ -468,7 +521,10 @@ impl<'a> Tokenizer<'a> {
         // TODO: strip leading empty lines from comment
         let window_text = self.buffer.window_as_str();
         let comment = &window_text[2..window_text.len() - 2].trim_end();
-        self.build_token(TokenType::MultiLineComment(comment.to_string()))
+        self.build_token(
+            TokenKind::MultiLineComment,
+            Some(TokenValue::String(comment.to_string())),
+        )
     }
 
     fn build_location(&self, start: &TextPosition, end: &TextPosition) -> DiagnosticLocation {
@@ -525,7 +581,7 @@ mod tests {
             tokenizer.iter(detail_level).collect()
         };
 
-        let mut iter = tokens.iter().map(|t| format!("{}", t.token_type));
+        let mut iter = tokens.iter().map(|t| format!("{}", t));
 
         for (index, expected) in expected_tokens.iter().enumerate() {
             assert_eq!(iter.next().unwrap(), *expected, "at index {}", index);
@@ -573,7 +629,7 @@ mod tests {
                 "Integer(200)",
                 "If",
                 "Identifier(a)",
-                "ComparisonOp(Gt)",
+                "Gt",
                 "Integer(100)",
                 "Identifier(print)",
                 "LeftParen",
@@ -696,7 +752,7 @@ mod tests {
                 "String()",
                 "FormatStringPart()",
                 "Identifier(foo)",
-                "Operator(Add)",
+                "Add",
                 "Identifier(bar)",
                 "String()",
                 "FormatStringPart(foo)",
@@ -796,41 +852,41 @@ foo // single line comment
                 "Unless",
                 "Until",
                 "While",
-                "Operator(Add)",
-                "Operator(Sub)",
-                "Operator(Mul)",
-                "Operator(Div)",
-                "Operator(Mod)",
-                "Operator(Pow)",
-                "Operator(And)",
-                "Operator(Or)",
-                "Operator(BitOr)",
-                "Operator(BitAnd)",
-                "Operator(BitXor)",
-                "Operator(BitLeftShift)",
-                "Operator(BitRightShift)",
-                "Operator(BitUnsignedRightShift)",
-                "Operator(Not)",
-                "Operator(BitNot)",
-                "ComparisonOp(Eq)",
-                "ComparisonOp(Neq)",
-                "ComparisonOp(Gt)",
-                "ComparisonOp(Gte)",
-                "ComparisonOp(Lt)",
-                "ComparisonOp(Lte)",
+                "Add",
+                "Sub",
+                "Mul",
+                "Div",
+                "Mod",
+                "Pow",
+                "And",
+                "Or",
+                "BitOr",
+                "BitAnd",
+                "BitXor",
+                "BitLeftShift",
+                "BitRightShift",
+                "BitUnsignedRightShift",
+                "Not",
+                "BitNot",
+                "Eq",
+                "Neq",
+                "Gt",
+                "Gte",
+                "Lt",
+                "Lte",
                 "Assign",
-                "OperatorAssign(Add)",
-                "OperatorAssign(Sub)",
-                "OperatorAssign(Mul)",
-                "OperatorAssign(Div)",
-                "OperatorAssign(Mod)",
-                "OperatorAssign(Pow)",
-                "OperatorAssign(BitOr)",
-                "OperatorAssign(BitAnd)",
-                "OperatorAssign(BitXor)",
-                "OperatorAssign(BitLeftShift)",
-                "OperatorAssign(BitRightShift)",
-                "OperatorAssign(BitUnsignedRightShift)",
+                "AssignAdd",
+                "AssignSub",
+                "AssignMul",
+                "AssignDiv",
+                "AssignMod",
+                "AssignPow",
+                "AssignBitOr",
+                "AssignBitAnd",
+                "AssignBitXor",
+                "AssignBitLeftShift",
+                "AssignBitRightShift",
+                "AssignBitUnsignedRightShift",
                 "LeftParen",
                 "RightParen",
                 "LeftBrace",
@@ -879,7 +935,7 @@ foo // single line comment
         assert_tokens(
             source,
             TokenDetailLevel::Full,
-            vec!["Error(UnexpectedCharacter('ä'))"],
+            vec!["Error(UnexpectedCharacter)"],
             vec!["Unexpected 'ä' character".to_string()],
         );
     }
@@ -892,6 +948,17 @@ foo // single line comment
             TokenDetailLevel::Full,
             vec!["Error(UnclosedStringLiteral)"],
             vec!["Unclosed string literal".to_string()],
+        );
+    }
+
+    #[test]
+    fn test_malformed_integer_literal() {
+        let source = "87234876234876234876234876234876234";
+        assert_tokens(
+            source,
+            TokenDetailLevel::Full,
+            vec!["Error(MalformedInteger)"],
+            vec!["Malformed integer (number too large to fit in target type)".to_string()],
         );
     }
 }

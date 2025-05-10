@@ -26,7 +26,7 @@ mod tokenizer;
 mod window_buffer;
 
 use crate::charly::diagnostics::DiagnosticController;
-use crate::charly::token::{Token, TokenType};
+use crate::charly::token::{Token, TokenKind};
 use crate::charly::tokenizer::{TokenDetailLevel, Tokenizer};
 use crate::{Args, Commands};
 use std::path::PathBuf;
@@ -54,14 +54,14 @@ pub fn run(cli: Args) -> ExitCode {
             if debug_args.dump_tokens {
                 println!("Got {} tokens", tokens.len());
                 for token in &tokens {
-                    match &token.token_type {
-                        TokenType::Newline => continue,
-                        TokenType::Whitespace => continue,
+                    match &token.kind {
+                        TokenKind::Newline => continue,
+                        TokenKind::Whitespace => continue,
                         _ => {
-                            let token_type_str = format!("{:?}", token.token_type);
-                            let type_fmt = format!("{:<32}", token_type_str);
+                            let kind_str = format!("{:?}", token.kind);
+                            let kind_str = format!("{:<32}", kind_str);
                             let text_fmt = format!("{:<16}", token.raw);
-                            println!("{}: {} {}", type_fmt, text_fmt, token.location.span);
+                            println!("{}: {} {}", kind_str, text_fmt, token.location.span);
                         }
                     }
                 }
