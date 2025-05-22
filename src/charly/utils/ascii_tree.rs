@@ -149,6 +149,7 @@ impl Display for AsciiTree {
 mod tests {
     use crate::charly::utils::ascii_tree::{AsciiTree, IndentStyle};
     use indoc::indoc;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn test_ascii_tree_plain() {

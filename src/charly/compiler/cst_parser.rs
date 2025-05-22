@@ -389,6 +389,7 @@ mod tests {
     use crate::charly::utils::cst_printer::CstPrinter;
     use crate::charly::utils::diagnostics::DiagnosticController;
     use indoc::indoc;
+    use pretty_assertions::assert_eq;
     use std::path::PathBuf;
 
     #[track_caller]

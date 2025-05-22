@@ -13,6 +13,7 @@ crc-fast = "1.1.0"
 enum_primitive = "0.1.1"
 indent = "0.1.1"
 indoc = "2.0.6"
+pretty_assertions = "1.4.1"
 rustyline = "15.0.0"
 static_assertions = "1.1.0"
 

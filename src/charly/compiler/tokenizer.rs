@@ -574,6 +574,7 @@ mod tests {
     use crate::charly::compiler::token::Token;
     use crate::charly::test_utils::validate_expected_diagnostics;
     use crate::charly::utils::diagnostics::DiagnosticController;
+    use pretty_assertions::assert_eq;
     use std::path::PathBuf;
 
     #[track_caller]
