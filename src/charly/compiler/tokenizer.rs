@@ -20,13 +20,16 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use crate::charly::diagnostics::{DiagnosticContext, DiagnosticLocation, FileId};
-use crate::charly::token::TokenError::{
+use std::str::FromStr;
+
+use crate::charly::compiler::token::TokenError::{
     MalformedFloat, MalformedInteger, UnclosedStringLiteral, UnexpectedCharacter,
 };
-use crate::charly::token::{try_keyword_or_identifier, try_token, Token, TokenKind, TokenValue};
-use crate::charly::window_buffer::{TextPosition, TextSpan, WindowBuffer};
-use std::str::FromStr;
+use crate::charly::compiler::token::{
+    try_keyword_or_identifier, try_token, Token, TokenKind, TokenValue,
+};
+use crate::charly::utils::diagnostics::{DiagnosticContext, DiagnosticLocation, FileId};
+use crate::charly::utils::window_buffer::{TextPosition, TextSpan, WindowBuffer};
 
 #[derive(PartialEq)]
 pub enum TokenizerMode {
@@ -41,6 +44,7 @@ pub struct Tokenizer<'a> {
     file_id: FileId,
     mode: TokenizerMode,
     diagnostic_context: &'a mut DiagnosticContext,
+    has_finished: bool,
 
     /// contains opened paren, brace and bracket tokens
     bracket_stack: Vec<TokenKind>,
@@ -60,11 +64,10 @@ pub enum TokenDetailLevel {
 impl Iterator for Tokenizer<'_> {
     type Item = Token;
     fn next(&mut self) -> Option<Token> {
-        let token = self.read_token();
-        match token.kind {
-            TokenKind::Eof => None,
-            _ => Some(token),
+        if self.has_finished {
+            return None;
         }
+        Some(self.read_token())
     }
 }
 
@@ -77,7 +80,13 @@ impl<'a> Tokenizer<'a> {
             bracket_stack: Vec::new(),
             interpolation_stack: Vec::new(),
             diagnostic_context: context,
+            has_finished: false,
         }
+    }
+
+    pub fn tokenize(&mut self, token_detail_level: TokenDetailLevel) -> Vec<Token> {
+        let iter = self.iter(token_detail_level);
+        iter.collect()
     }
 
     pub fn iter(&mut self, detail_level: TokenDetailLevel) -> impl Iterator<Item = Token> {
@@ -102,6 +111,7 @@ impl<'a> Tokenizer<'a> {
         let token = self.read_token_impl();
 
         if token.is_none() {
+            self.has_finished = true;
             return self.build_token(TokenKind::Eof, None);
         }
 
@@ -561,23 +571,25 @@ impl CharType for char {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::charly::diagnostics::DiagnosticController;
+    use crate::charly::compiler::token::Token;
+    use crate::charly::test_utils::validate_expected_diagnostics;
+    use crate::charly::utils::diagnostics::DiagnosticController;
     use std::path::PathBuf;
 
     #[track_caller]
     fn assert_tokens(
         source: &str,
         detail_level: TokenDetailLevel,
-        expected_tokens: Vec<&str>,
-        expected_diagnostic_messages: Vec<String>,
+        expected_tokens: &[&str],
+        expected_diagnostics: &[&str],
     ) {
         let mut controller = DiagnosticController::new();
         let path = PathBuf::from("test");
         let file_id = controller.register_file(&path, source);
-        let context = controller.get_or_create_context(file_id);
+        let mut context = controller.get_or_create_context(file_id);
 
         let tokens: Vec<Token> = {
-            let mut tokenizer = Tokenizer::new(source, file_id, context);
+            let mut tokenizer = Tokenizer::new(source, file_id, &mut context);
             tokenizer.iter(detail_level).collect()
         };
 
@@ -586,30 +598,11 @@ mod tests {
         for (index, expected) in expected_tokens.iter().enumerate() {
             assert_eq!(iter.next().unwrap(), *expected, "at index {}", index);
         }
+
+        assert_eq!(iter.next().unwrap(), "Eof");
         assert!(iter.next().is_none());
 
-        for diagnostic_message in &context.messages {
-            let was_expected = expected_diagnostic_messages
-                .iter()
-                .find(|message| diagnostic_message.title.eq(*message));
-            assert!(
-                was_expected.is_some(),
-                "Unexpected diagnostic message: {}",
-                diagnostic_message.title
-            );
-        }
-
-        for expected_message in expected_diagnostic_messages {
-            let was_expected = &context
-                .messages
-                .iter()
-                .find(|message| expected_message.eq(&message.title));
-            assert!(
-                was_expected.is_some(),
-                "Expected diagnostic message not found: {}",
-                expected_message
-            );
-        }
+        validate_expected_diagnostics(&context, expected_diagnostics);
     }
 
     #[test]
@@ -622,7 +615,7 @@ mod tests {
         assert_tokens(
             source,
             TokenDetailLevel::NoWhitespaceAndComments,
-            vec![
+            &[
                 "Let",
                 "Identifier(a)",
                 "Assign",
@@ -636,7 +629,7 @@ mod tests {
                 "String(hello world)",
                 "RightParen",
             ],
-            vec![],
+            &[],
         );
     }
 
@@ -646,7 +639,7 @@ mod tests {
         assert_tokens(
             source,
             TokenDetailLevel::NoWhitespaceAndComments,
-            vec![
+            &[
                 "Identifier(foo)",
                 "Identifier(Foo)",
                 "Identifier(foo_bar)",
@@ -654,7 +647,7 @@ mod tests {
                 "Identifier($123)",
                 "Identifier(_123)",
             ],
-            vec![],
+            &[],
         );
     }
 
@@ -664,7 +657,7 @@ mod tests {
         assert_tokens(
             source,
             TokenDetailLevel::NoWhitespaceAndComments,
-            vec![
+            &[
                 "Integer(123)",
                 "Integer(291)",
                 "Integer(10)",
@@ -682,7 +675,7 @@ mod tests {
                 "Dot",
                 "Identifier(foo)",
             ],
-            vec![],
+            &[],
         );
     }
 
@@ -697,13 +690,13 @@ mod tests {
         assert_tokens(
             source,
             TokenDetailLevel::NoWhitespaceAndComments,
-            vec![
+            &[
                 r#"String(hello world)"#,
                 "String()",
                 r#"String(hello\nworld)"#,
                 r#"String(\n\r\t\"\\)"#,
             ],
-            vec![],
+            &[],
         );
     }
 
@@ -715,8 +708,8 @@ mod tests {
         assert_tokens(
             source,
             TokenDetailLevel::NoWhitespaceAndComments,
-            vec![r#"String(abc)"#],
-            vec!["Unnecessary escape sequence".to_string()],
+            &[r#"String(abc)"#],
+            &["Unnecessary escape sequence"],
         );
     }
 
@@ -733,7 +726,7 @@ mod tests {
         assert_tokens(
             source,
             TokenDetailLevel::NoWhitespaceAndComments,
-            vec![
+            &[
                 "FormatStringPart(hello )",
                 "Identifier(name)",
                 "String(!)",
@@ -759,7 +752,7 @@ mod tests {
                 "String(foo)",
                 "String(foo)",
             ],
-            vec![],
+            &[],
         );
     }
 
@@ -777,13 +770,13 @@ foo // single line comment
         assert_tokens(
             source,
             TokenDetailLevel::NoWhitespace,
-            vec![
+            &[
                 "SingleLineComment(single line comment)",
                 "MultiLineComment(\n    multi\n    line\n    comment)",
                 "Identifier(foo)",
                 "SingleLineComment(single line comment)",
             ],
-            vec![],
+            &[],
         );
     }
 
@@ -807,7 +800,7 @@ foo // single line comment
         assert_tokens(
             source,
             TokenDetailLevel::NoWhitespaceAndComments,
-            vec![
+            &[
                 "True",
                 "False",
                 "Null",
@@ -905,7 +898,7 @@ foo // single line comment
                 "RightThickArrow",
                 "QuestionMark",
             ],
-            vec![],
+            &[],
         );
     }
 
@@ -915,7 +908,7 @@ foo // single line comment
         assert_tokens(
             source,
             TokenDetailLevel::Full,
-            vec![
+            &[
                 "Whitespace",
                 "Identifier(foo)",
                 "Newline",
@@ -925,7 +918,7 @@ foo // single line comment
                 "Whitespace",
                 "Identifier(baz)",
             ],
-            vec![],
+            &[],
         );
     }
 
@@ -935,8 +928,8 @@ foo // single line comment
         assert_tokens(
             source,
             TokenDetailLevel::Full,
-            vec!["Error(UnexpectedCharacter)"],
-            vec!["Unexpected 'ä' character".to_string()],
+            &["Error(UnexpectedCharacter)"],
+            &["Unexpected 'ä' character"],
         );
     }
 
@@ -946,8 +939,8 @@ foo // single line comment
         assert_tokens(
             source,
             TokenDetailLevel::Full,
-            vec!["Error(UnclosedStringLiteral)"],
-            vec!["Unclosed string literal".to_string()],
+            &["Error(UnclosedStringLiteral)"],
+            &["Unclosed string literal"],
         );
     }
 
@@ -957,8 +950,8 @@ foo // single line comment
         assert_tokens(
             source,
             TokenDetailLevel::Full,
-            vec!["Error(MalformedInteger)"],
-            vec!["Malformed integer (number too large to fit in target type)".to_string()],
+            &["Error(MalformedInteger)"],
+            &["Malformed integer (number too large to fit in target type)"],
         );
     }
 }

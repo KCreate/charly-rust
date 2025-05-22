@@ -20,56 +20,123 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-mod diagnostics;
-mod token;
-mod tokenizer;
-mod window_buffer;
+mod compiler;
+mod test_utils;
+mod utils;
 
-use crate::charly::diagnostics::DiagnosticController;
-use crate::charly::token::{Token, TokenKind};
-use crate::charly::tokenizer::{TokenDetailLevel, Tokenizer};
-use crate::{Args, Commands};
+use crate::charly::compiler::cst_parser::CSTParser;
+use crate::charly::compiler::token::TokenKind;
+use crate::charly::compiler::tokenizer::{TokenDetailLevel, Tokenizer};
+use crate::charly::utils::ascii_tree::AsciiTree;
+use crate::charly::utils::diagnostics::DiagnosticController;
+use crate::{Args, Commands, DebugArgs};
+use rustyline::error::ReadlineError;
+use rustyline::DefaultEditor;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 pub fn run(cli: Args) -> ExitCode {
+    use std::path::PathBuf;
+    use std::process::ExitCode;
     match cli.command {
         Commands::Run {
             filename,
-            runtime_args: _,
             debug_args,
         } => {
             let path = PathBuf::try_from(&filename).unwrap();
             let content = std::fs::read_to_string(&path).unwrap();
+            compile(&debug_args, &path, &content);
+        }
 
-            let mut controller = DiagnosticController::new();
-            let file_id = controller.register_file(&path, content.as_str());
-            let context = controller.get_or_create_context(file_id);
-
-            let mut tokenizer = Tokenizer::new(content.as_str(), file_id, context);
-            let tokens: Vec<Token> = tokenizer
-                .iter(TokenDetailLevel::NoWhitespaceAndComments)
-                .collect();
-
-            if debug_args.dump_tokens {
-                println!("Got {} tokens", tokens.len());
-                for token in &tokens {
-                    match &token.kind {
-                        TokenKind::Newline => continue,
-                        TokenKind::Whitespace => continue,
+        Commands::Repl { debug_args } => {
+            let path = PathBuf::try_from("repl").unwrap();
+            let mut rl = DefaultEditor::new().unwrap();
+            loop {
+                match (rl.readline("> ")) {
+                    Ok(line) => match line.trim() {
+                        ".exit" => break,
                         _ => {
-                            let kind_str = format!("{:?}", token.kind);
-                            let kind_str = format!("{:<32}", kind_str);
-                            let text_fmt = format!("{:<16}", token.raw);
-                            println!("{}: {} {}", kind_str, text_fmt, token.location.span);
+                            compile(&debug_args, &path, &line);
+                            rl.add_history_entry(&line).unwrap();
                         }
+                    },
+                    Err(ReadlineError::Interrupted) => {
+                        break;
+                    }
+                    Err(ReadlineError::Eof) => {
+                        continue;
+                    }
+                    Err(err) => {
+                        println!("Error: {:?}", err);
+                        break;
                     }
                 }
             }
+        }
 
-            controller.print_diagnostics();
+        Commands::Debug {} => {
+            let mut root = AsciiTree::new("root");
+
+            {
+                let foo = root.node("foo");
+                foo.node("1");
+                foo.node("2");
+                foo.node("3");
+            }
+
+            root.node("bar");
+
+            {
+                let baz = root.node("baz");
+                baz.node("1");
+                baz.node("2");
+                baz.node("3");
+            }
+
+            let format = root.format();
+
+            println!("{}", format);
         }
     }
 
     ExitCode::SUCCESS
+}
+
+fn compile(debug_args: &DebugArgs, path: &PathBuf, content: &str) {
+    let mut controller = DiagnosticController::new();
+    let file_id = controller.register_file(&path, content);
+    let context = controller.get_or_create_context(file_id);
+
+    let mut tokenizer = Tokenizer::new(content, file_id, context);
+    let detail_level = TokenDetailLevel::NoWhitespaceAndComments;
+    let tokens = tokenizer.tokenize(detail_level);
+
+    if debug_args.dump_source {
+        println!("{}", content);
+    }
+
+    if debug_args.dump_tokens {
+        println!("Got {} tokens", tokens.len());
+        for token in &tokens {
+            match &token.kind {
+                TokenKind::Newline => continue,
+                TokenKind::Whitespace => continue,
+                _ => {
+                    let kind_str = format!("{:?}", token.kind);
+                    let kind_str = format!("{:<32}", kind_str);
+                    let text_fmt = format!("{:<16}", token.raw);
+                    println!("{}: {} {}", kind_str, text_fmt, token.location.span);
+                }
+            }
+        }
+    }
+
+    let mut parser = CSTParser::new(&tokens, context);
+    let tree = parser.parse();
+
+    if debug_args.dump_cst {
+        println!("{}", tree);
+    }
+
+    controller.print_diagnostics();
 }

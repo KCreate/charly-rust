@@ -1,7 +1,9 @@
-let name = "leonard"
-print("hello ${name}!")
-print("\1 + \2 = ${1 + 2}")
-let f = 98723498723948723498723947823948723948723987234
-let f = 23876234876234876234876234876238476234.234876238476238476234876238476238476
-let ä
-let s = "foo bar
+//let foo = 100
+//let foo = foo
+//let foo = (100)
+//let foo = (foo)
+//let foo = foo()
+//let foo = foo(1, 2, foo(3, 4))
+//let foo = 10 + 20 * 30 + 40
+//let a = 10 + 20 * 30 > 100 == false && true || false
+let a = foo(10, 20, bar(30) * 2) * 2

@@ -20,19 +20,33 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use crate::charly::window_buffer::TextSpan;
 use ariadne::{
     Color, ColorGenerator, Config, IndexType, Label, LabelAttach, Report, ReportKind, Source,
 };
 use std::ops::Range;
 use std::path::PathBuf;
 
+use crate::charly::utils::window_buffer::TextSpan;
+
 pub type FileId = usize;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DiagnosticLocation {
     pub file_id: FileId,
     pub span: TextSpan,
+}
+
+impl DiagnosticLocation {
+    pub fn merge(&self, other: &DiagnosticLocation) -> DiagnosticLocation {
+        assert_eq!(self.file_id, other.file_id);
+        DiagnosticLocation {
+            file_id: self.file_id,
+            span: TextSpan {
+                start: self.span.start.min(other.span.start),
+                end: self.span.end.max(other.span.end),
+            },
+        }
+    }
 }
 
 impl DiagnosticLocation {

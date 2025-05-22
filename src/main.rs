@@ -1,3 +1,25 @@
+// MIT License
+//
+// Copyright (c) 2025 Leonard Schütz
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
 use clap::{Parser, Subcommand};
 use std::process::ExitCode;
 
@@ -14,39 +36,15 @@ pub struct Args {
 }
 
 #[derive(clap::Args, Debug)]
-struct RuntimeArgs {
-    #[arg(
-        help_heading = "Runtime",
-        long,
-        help = "Set maximum number of concurrent threads",
-        default_value = "16",
-        value_name = "N"
-    )]
-    limit_concurrency: Option<usize>,
-
-    #[arg(
-        help_heading = "Runtime",
-        long,
-        help = "Set initial number of heap regions",
-        default_value = "16",
-        value_name = "N"
-    )]
-    initial_heap_region_count: Option<usize>,
-
-    #[arg(help_heading = "Runtime", long, help = "Skip execution")]
-    skip_execution: bool,
-
-    #[arg(help_heading = "Runtime", long, env = "CHARLY_RUNTIME_PATH")]
-    runtime_path: Option<String>,
-}
-
-#[derive(clap::Args, Debug)]
 struct DebugArgs {
     #[arg(help_heading = "Debug", long, help = "Disable AST optimizations")]
     disable_ast_opt: bool,
 
     #[arg(help_heading = "Debug", long, help = "Disable IR optimizations")]
     disable_ir_opt: bool,
+
+    #[arg(help_heading = "Debug", long, help = "Dump source code to stdout")]
+    dump_source: bool,
 
     #[arg(help_heading = "Debug", long, help = "Dump tokens to stdout")]
     dump_tokens: bool,
@@ -70,7 +68,8 @@ struct DebugArgs {
     #[arg(
         help_heading = "Debug",
         long = "dump-include",
-        help = "Include files matching the given glob pattern in any dumps"
+        help = "Include files matching the given glob pattern in any dumps",
+        value_name = "glob"
     )]
     dump_include_list: Vec<String>,
 }
@@ -83,11 +82,17 @@ enum Commands {
         filename: String,
 
         #[clap(flatten)]
-        runtime_args: RuntimeArgs,
+        debug_args: DebugArgs,
+    },
 
+    #[clap(about = "Run the REPL")]
+    Repl {
         #[clap(flatten)]
         debug_args: DebugArgs,
     },
+
+    #[clap(about = "Run the code in the main debug section")]
+    Debug {},
 }
 
 fn main() -> ExitCode {

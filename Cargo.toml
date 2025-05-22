@@ -11,7 +11,9 @@ clap = { version = "4.5.37", features = ["derive", "cargo", "env"] }
 compile-time-crc32 = "0.1.2"
 crc-fast = "1.1.0"
 enum_primitive = "0.1.1"
+indent = "0.1.1"
 indoc = "2.0.6"
+rustyline = "15.0.0"
 static_assertions = "1.1.0"
 
 [profile.release]

@@ -20,11 +20,11 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use crate::charly::diagnostics::DiagnosticLocation;
+use crate::charly::utils::diagnostics::DiagnosticLocation;
 use std::fmt::{Display, Formatter};
 use std::num::{ParseFloatError, ParseIntError};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Token {
     pub kind: TokenKind,
     pub location: DiagnosticLocation,
@@ -115,9 +115,9 @@ pub enum TokenKind {
     Extends,
     Final,
     Finally,
+    Fn,
     For,
     From,
-    Fn,
     Guard,
     If,
     Import,
@@ -126,6 +126,7 @@ pub enum TokenKind {
     Let,
     Loop,
     Match,
+    Module,
     Private,
     Return,
     Spawn,
@@ -236,6 +237,7 @@ pub static TOKEN_TEXT_MAPPING: &[(&str, TokenKind)] = &[
     ("let", TokenKind::Let),
     ("loop", TokenKind::Loop),
     ("match", TokenKind::Match),
+    ("module", TokenKind::Module),
     ("null", TokenKind::Null),
     ("private", TokenKind::Private),
     ("return", TokenKind::Return),

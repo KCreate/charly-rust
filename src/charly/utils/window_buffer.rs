@@ -22,14 +22,14 @@
 
 use std::fmt::Display;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct TextPosition {
     pub byte_offset: usize,
     pub line: u32,
     pub column: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TextSpan {
     pub start: TextPosition,
     pub end: TextPosition,
