@@ -24,7 +24,6 @@ mod compiler;
 mod test_utils;
 mod utils;
 
-use crate::charly::compiler::cst_parser::CSTParser;
 use crate::charly::compiler::token::TokenKind;
 use crate::charly::compiler::tokenizer::{TokenDetailLevel, Tokenizer};
 use crate::charly::utils::ascii_tree::AsciiTree;
@@ -38,6 +37,7 @@ use std::process::ExitCode;
 pub fn run(cli: Args) -> ExitCode {
     use std::path::PathBuf;
     use std::process::ExitCode;
+
     match cli.command {
         Commands::Run {
             filename,
@@ -131,12 +131,12 @@ fn compile(debug_args: &DebugArgs, path: &PathBuf, content: &str) {
         }
     }
 
-    let mut parser = CSTParser::new(&tokens, context);
-    let tree = parser.parse();
-
-    if debug_args.dump_cst {
-        println!("{}", tree);
-    }
+    // let mut parser = CSTParser::new(&tokens, context);
+    // let tree = parser.parse();
+    //
+    // if debug_args.dump_cst {
+    //     println!("{}", tree);
+    // }
 
     controller.print_diagnostics();
 }

@@ -33,64 +33,118 @@ pub enum CSTTreeKind {
     File,
 
     // statements
-    ModuleDeclaration,
-    Declaration,
-    UnpackDeclaration,
+    Stmt,
+    DeclStmt,
+    FlowStmt,
+    ExprStmt,
     Block,
-    If,
-    While,
-    Loop,
-    For,
-    Match,
-    MatchArm,
-    TryCatch,
-    TryFinally,
 
-    // control statements
-    Return,
-    Break,
-    Continue,
-    Throw,
-    Assert,
-    Export,
-    Import,
-    Yield,
-    Spawn,
-    Await,
-    Typeof,
+    // module decl
+    ModuleDecl,
+    ModulePathSpec,
 
-    // expressions
-    Assignment,
-    MemberOp,
-    IndexOp,
-    BinaryOp,
-    UnaryOp,
-    CallOp,
-    CallArgumentList,
-    CallArgument,
-    UnpackTargetElement,
-    UnpackTarget,
-    OptionalUnpack,
-    Spread,
+    // use decl
+    UseDecl,
+    UsePathSpec,
+    UsePathSpecWildcard,
 
-    // literals
-    Literal,
-    Name,
-    Paren,
-    FormatString,
-    Tuple,
-    List,
-    Dict,
-    DictEntry,
-    Fn,
+    // struct decl
+    StructDecl,
+    StructMemberList,
+    StructMemberPart,
+    StructBody,
+    StructBodyStmt,
+    StructInitBlock,
+    StructDeclModifierBlock,
+    StructCompanionObjectDecl,
+
+    // interface decl
+    InterfaceDecl,
+    InterfaceBody,
+
+    // typealias decl
+    TypealiasDecl,
+
+    // fn decl
+    FnDecl,
+    FnName,
     FnParamList,
     FnParam,
-    Class,
-    ClassBody,
-    ClassStaticDecl,
-    ClassStaticBlock,
-    ClassExtends,
-    ClassProperty,
+    FnReturnDecl,
+    FnBody,
+    FnExprBody,
+    FnBlockBody,
+
+    // variable decl
+    VariableDecl,
+
+    // control flow stmt
+    IfStmt,
+    WhileStmt,
+    ForStmt,
+    LoopStmt,
+
+    // when stmt
+    WhenStmt,
+    WhenBody,
+    WhenCondition,
+    WhenExprCondition,
+    WhenIsCondition,
+    WhenIsUnpackPart,
+    WhenElseCondition,
+    WhenSubCondition,
+
+    // throw stmt
+    ThrowStmt,
+
+    // try catch finally stmt
+    TryStmt,
+    CatchStmt,
+    FinallyStmt,
+
+    // select stmt
+    SelectStmt,
+    SelectExprCase,
+    SelectElseCase,
+
+    // defer stmt
+    DeferStmt,
+
+    // expressions
+    Literal,
+    AwaitExpr,
+    BinOpExpr,
+    UnaryOpExpr,
+    CallExpr,
+    IndexExpr,
+    MemberExpr,
+    RangeExpr,
+
+    // literals
+    FStringLiteral,
+    TupleLiteral,
+    ListLiteral,
+
+    // lambda literal
+    LambdaLiteral,
+    LambdaParameterDecl,
+
+    // map literal
+    MapLiteral,
+    MapPart,
+    MapPartKey,
+
+    // type annotations
+    TypeAnnotation,
+    TypeExpr,
+    TypeExprPart,
+    TypeExprGenericPart,
+
+    // misc
+    DeclModifier,
+    BlockOrFlowStmt,
+    BlockOrExprStmt,
+    BlockOrExpr,
 }
 
 pub struct CSTTree {

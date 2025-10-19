@@ -30,9 +30,9 @@ use charly::run;
 pub struct Args {
     #[command(subcommand)]
     command: Commands,
-
-    #[arg(long, global = true, help = "Show license")]
-    license: bool,
+    // TODO: implement license printing
+    // #[arg(long, global = true, help = "Show license")]
+    // license: bool,
 }
 
 #[derive(clap::Args, Debug)]

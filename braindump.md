@@ -1,0 +1,152 @@
+# Charly Programming Language
+
+## Project goals
+
+- Statically typed language
+- Concurrency using fibers, not coroutines
+- Closures
+- Exceptions
+- When statements
+- Defer statement
+	- Execute code before leaving block scope
+- String optimizations
+	- Shared strings
+	- String slices
+	- All strings are mutable
+- Type system
+	- Declare new types with fixed layout
+	- Shape system can be used by inline caches
+	- No inheritance
+	- Interfaces
+		- Properties and methods
+	- Structs
+		- Properties and methods
+	- Types cannot be declared at runtime
+		- All packages, modules, interfaces and structs must be well-known at compile-time
+	- Builtin types
+		- Numbers (switch automatically between int32 and float64)
+		- Strings (mutable, automatically share memory, slicing of shared memory)
+			- Enforced and guaranteed utf8 encoding
+		- Bytes (mutable, automatically share memory, slicing of shared memory)
+			- Arbitrary binary data
+		- Boolean
+		- Null
+		- Symbols
+		- Tuple
+		- Lists
+		- Map
+		- Class
+		- Function
+		- Channel
+- Module system
+	- Package as top level construct
+		- Packages can have dependencies on other packages
+		- Meta
+			- Author
+			- Title
+			- Version
+			- Dependencies
+			- Permission system
+				- File system
+				- Network access
+				- Cryptographic resources
+				- Allowed Environment variables
+	- Packages contain modules
+- Inline caches for runtime type specialization
+	- Arithmetic operations
+	- Property access
+		- On first access
+			- Lookup the property offset
+			- Store shape id and property offset in the inline cache
+		- On repeated access
+			- Compare shape id
+				- Match -> use cached property offset
+				- Mismatch -> reset inline cache, restart at first access
+	- Single entry vs multiple entry inline caches
+		- Keep a success counter on each cache entry
+		- On mismatch, replace lowest success entry with new entry
+- FFI interface to easily wrap shared libraries
+
+## Implementation
+
+- Language definition
+	- [ ] Define a grammar for the language
+	- [ ] Write an example file that contains all syntax constructs
+
+- Execution pipeline
+	- Source
+		- [x] Lexer
+		- [ ] CST Parser
+		- [ ] AST Builder
+		- [ ] Syntax validation
+		- [ ] Syntax desugaring
+		- Optimizations
+			- [ ] Constant propagation
+			- [ ] Dead code elimination
+	- IR
+		- [ ] Bytecode generation
+		- [ ] Basic blocks
+		- [ ] Control flow graph
+		- Optimizations
+			- [ ] Dead code elimination
+			- [ ] Jump optimizations
+	- JIT
+		- [ ] Bytecode to JIT library lowering
+		- [ ] JIT library optimizations
+		- [ ] JIT library machine code generation
+
+- Runtime
+	- Scheduler
+		- Runtime threads
+			- [ ] Scheduler main thread
+			- [ ] Garbage collector thread
+			- [ ] Async IO handler thread
+			- [ ] FFI handler threads
+		- Fibers
+			- [ ] Setup of new fiber
+			- [ ] Allocation of stack frame with dead zone
+			- [ ] Fiber stack growth mechanism
+			- [ ] Context switch between fiber and scheduler main thread
+			- [ ] Fiber checkpoints
+			- [ ] Waiting for channel recv event
+			- [ ] Channel select
+		- Timers, Tickers
+	- Execution
+		- [ ] Population of inline caches
+		- [ ] Bytecode patching in hot methods
+		- [ ] Recompilation of hot methods
+	- Garbage collection
+		- [ ] Generational compacting garbage collector
+	- Language features
+		- [ ] Channels
+			- [ ] Send, Receive
+			- [ ] Buffering
+			- [ ] Select statement
+			- [ ] Synchronisation primitives built on channels
+	- REPL
+
+- Utils
+	- [ ] Memory allocator
+	- [ ] UTF-8 utils
+	- [ ] Pointer tagging encoding / decoding
+	- [x] Diagnostic formatter
+
+- Development Environment
+	- [ ] Basic language server POC for VSCode
+	- [ ] Syntax highlighting
+	- [ ] Diagnostic reporting
+	- [ ] Find usages
+	- [ ] Go to definition
+	- [ ] Autocomplete for snippets
+	- [ ] Autocomplete for well-known types
+	- [ ] Autocomplete for type properties and functions
+	- Debugger
+		- [ ] Ability to place breakpoints
+		- [ ] Continue to next breakpoint
+		- [ ] Step forward one instruction
+		- [ ] Step forward one line
+		- [ ] Step in
+		- [ ] Step out
+		- [ ] Variable inspection
+		- [ ] Stackframe inspection
+		- [ ] Inline REPL when stopped for breakpoint

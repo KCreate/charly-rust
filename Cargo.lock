@@ -133,6 +133,7 @@ dependencies = [
  "enum_primitive",
  "indent",
  "indoc",
+ "once_cell",
  "pretty_assertions",
  "rustyline",
  "static_assertions",

@@ -20,11 +20,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use std::cell::Cell;
-
 use crate::charly::compiler::cst::{CSTNode, CSTTree, CSTTreeKind};
 use crate::charly::compiler::token::{Token, TokenKind};
 use crate::charly::utils::diagnostics::DiagnosticContext;
+use once_cell::sync::Lazy;
 
 enum Event {
     Open { kind: CSTTreeKind },
@@ -45,9 +44,30 @@ pub struct CSTParser<'a> {
     tokens: &'a Vec<Token>,
     diagnostic_context: &'a mut DiagnosticContext,
     pos: usize,
-    fuel: Cell<u32>,
+    fuel: u32,
     events: Vec<Event>,
 }
+
+#[macro_export]
+macro_rules! token_set {
+    (
+        tokens = [ $( $token:expr ),* $(,)? ],
+        includes = [ $( $set:expr ),* $(,)? ]
+    ) => {
+        ::once_cell::sync::Lazy::new(|| {
+            let mut set = Vec::new();
+            $(
+                set.extend_from_slice($set.as_slice());
+            )*
+            $(
+                set.push($token);
+            )*
+            set
+        })
+    };
+}
+
+type TokenSet = Lazy<Vec<TokenKind>>;
 
 impl<'a> CSTParser<'a> {
     pub fn new(tokens: &'a Vec<Token>, diagnostic_context: &'a mut DiagnosticContext) -> Self {
@@ -55,7 +75,7 @@ impl<'a> CSTParser<'a> {
             tokens,
             diagnostic_context,
             pos: 0,
-            fuel: Cell::new(256),
+            fuel: 256,
             events: Vec::new(),
         }
     }
@@ -65,72 +85,530 @@ impl<'a> CSTParser<'a> {
         self.build_tree()
     }
 
-    fn parse_file(&mut self) {
-        let m = self.open();
+    /// file
+    ///     : stmt*
+    ///     ;
+    fn parse_file(&mut self) {}
 
-        while !self.eof() {
-            match self.current() {
-                TokenKind::Module => self.parse_module_decl(),
-                TokenKind::Let | TokenKind::Const => self.parse_variable_decl(),
-                _ => self.parse_expression(),
-            }
-        }
+    /// stmt
+    ///     : moduleDecl
+    ///     : useDecl
+    ///     : declStmt
+    ///     : flowStmt
+    ///     : block
+    ///     ;
+    fn parse_stmt(&mut self) {}
 
-        self.close(m, CSTTreeKind::File);
-    }
+    /// declStmt
+    ///     : fnDecl
+    ///     : variableDecl
+    ///     : structDecl
+    ///     : interfaceDecl
+    ///     : typealiasDecl
+    ///     ;
+    fn parse_decl_stmt(&mut self) {}
 
-    fn parse_module_decl(&mut self) {
-        assert_eq!(self.current(), TokenKind::Module);
-        let m = self.open();
-        self.expect(TokenKind::Module);
-        self.parse_name(true);
-        self.close(m, CSTTreeKind::ModuleDeclaration);
-    }
+    // /// file
+    // ///     : statement*
+    // ///     ;
+    // fn parse_file(&mut self) {
+    //     let m = self.open();
+    //     while !self.eof() {
+    //         self.skip_unexpected_until(&[&Self::STARTERS_STATEMENT]);
+    //         self.parse_statement();
+    //     }
+    //     self.close(m, CSTTreeKind::File);
+    // }
+    //
+    // /// statement
+    // ///     : moduleDecl
+    // ///     : useDecl
+    // ///     : structDecl
+    // ///     : fnDecl
+    // ///     : variableDecl
+    // ///     : controlStmt
+    // ///     : ifStmt
+    // ///     : whileStmt
+    // ///     : expr
+    // ///     ;
+    // const STARTERS_STATEMENT: TokenSet = token_set! {
+    //     tokens = [],
+    //     includes = [
+    //         CSTParser::STARTERS_MODULE_DECL,
+    //         CSTParser::STARTERS_USE_DECL,
+    //         CSTParser::STARTERS_STRUCT_DECL,
+    //         CSTParser::STARTERS_FN_DECL,
+    //         CSTParser::STARTERS_VARIABLE_DECL,
+    //         CSTParser::STARTERS_CONTROL_STMT,
+    //         CSTParser::STARTERS_IF_STMT,
+    //         CSTParser::STARTERS_WHILE_STMT,
+    //         CSTParser::STARTERS_EXPR,
+    //     ]
+    // };
+    // fn parse_statement(&mut self) {
+    //     let m = self.open();
+    //
+    //     let current = self.current();
+    //     match current {
+    //         TokenKind::Module => self.parse_module_decl(&Self::STARTERS_STATEMENT),
+    //         TokenKind::Use => self.parse_use_decl(),
+    //         TokenKind::Struct => self.parse_struct_decl(),
+    //         TokenKind::Fn => self.parse_fn_decl(),
+    //         TokenKind::Let => self.parse_variable_decl(),
+    //         _ if Self::STARTERS_CONTROL_STMT.contains(&current) => self.parse_control_stmt(),
+    //         TokenKind::If => self.parse_if_stmt(),
+    //         TokenKind::While => self.parse_while_stmt(),
+    //         _ => self.parse_expr(),
+    //     }
+    //
+    //     self.close(m, CSTTreeKind::Statement);
+    // }
+    //
+    // /// moduleDecl
+    // ///     : "module" modulePathSpec
+    // ///     ;
+    // const STARTERS_MODULE_DECL: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::Module,
+    //     ],
+    //     includes = []
+    // };
+    // fn parse_module_decl(&mut self, terminators: &TokenSet) {
+    //     let m = self.open();
+    //
+    //     self.expect(TokenKind::Module);
+    //     self.skip_unexpected_until(&[&Self::STARTERS_MODULE_PATH_SPEC, terminators]);
+    //
+    //     if self.at_set(Self::STARTERS_MODULE_PATH_SPEC) {
+    //         self.parse_module_path_spec();
+    //     }
+    //
+    //     self.close(m, CSTTreeKind::ModuleDecl);
+    // }
+    //
+    // /// modulePathSpec
+    // ///     : id ("::" id)*
+    // ///     ;
+    // const STARTERS_MODULE_PATH_SPEC: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::Identifier,
+    //     ],
+    //     includes = []
+    // };
+    // fn parse_module_path_spec(&mut self) {}
+    //
+    // /// useDecl
+    // ///     : "use" usePathSpec ("as" id)?
+    // ///     ;
+    // const STARTERS_USE_DECL: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::Use,
+    //     ],
+    //     includes = []
+    // };
+    // fn parse_use_decl(&mut self) {}
+    //
+    // /// usePathSpec
+    // ///     : (usePathSpecEntry "::")*
+    // ///     ;
+    // const STARTERS_USE_PATH_SPEC: TokenSet = token_set! {
+    //     tokens = [],
+    //     includes = [
+    //         CSTParser::STARTERS_USE_PATH_SPEC_ENTRY,
+    //     ]
+    // };
+    // fn parse_use_path_spec(&mut self) {}
+    //
+    // /// usePathSpecEntry
+    // ///     : id
+    // ///     : "{" (id ",")* "}"
+    // ///     : "*"
+    // ///     ;
+    // const STARTERS_USE_PATH_SPEC_ENTRY: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::Identifier,
+    //         TokenKind::LeftBrace,
+    //         TokenKind::Mul,
+    //     ],
+    //     includes = []
+    // };
+    // fn parse_use_path_spec_entry(&mut self) {}
+    //
+    // /// structDecl
+    // ///     : "struct" id structMemberList? structBody?
+    // ///     ;
+    // const STARTERS_STRUCT_DECL: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::Struct,
+    //     ],
+    //     includes = []
+    // };
+    // fn parse_struct_decl(&mut self) {}
+    //
+    // /// structMemberList
+    // ///     : "(" (variableDecl ",")* ")"
+    // ///     ;
+    // const STARTERS_STRUCT_MEMBER_LIST: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::LeftParen,
+    //     ],
+    //     includes = []
+    // };
+    // fn parse_struct_member_list(&mut self) {}
+    //
+    // /// structBody
+    // ///     : "{" structBodyStmt* "}"
+    // ///     ;
+    // const STARTERS_STRUCT_BODY: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::LeftBrace,
+    //     ],
+    //     includes = []
+    // };
+    // fn parse_struct_body(&mut self) {}
+    //
+    // /// structBodyStmt
+    // ///     : variableDecl
+    // ///     : fnDecl
+    // ///     : "init" block
+    // ///     ;
+    // const STARTERS_STRUCT_BODY_STMT: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::Init,
+    //     ],
+    //     includes = [
+    //         CSTParser::STARTERS_VARIABLE_DECL,
+    //         CSTParser::STARTERS_FN_DECL,
+    //     ]
+    // };
+    // fn parse_struct_body_stmt(&mut self) {}
+    //
+    // /// fnDecl
+    // ///     : "fn" fnName fnParamList fnReturnDecl fnBody
+    // ///     ;
+    // const STARTERS_FN_DECL: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::Fn,
+    //     ],
+    //     includes = []
+    // };
+    // fn parse_fn_decl(&mut self) {}
+    //
+    // /// fnName
+    // ///     : (id ".")? id
+    // ///     ;
+    // const STARTERS_FN_NAME: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::Identifier,
+    //     ],
+    //     includes = []
+    // };
+    // fn parse_fn_name(&mut self) {}
+    //
+    // /// fnParamList
+    // ///     : "(" (fnParam ",")* ")"
+    // ///     ;
+    // const STARTERS_FN_PARAM_LIST: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::LeftParen,
+    //     ],
+    //     includes = []
+    // };
+    // fn parse_fn_param_list(&mut self) {}
+    //
+    // /// fnParam
+    // ///     : id ":" typeExpr
+    // ///     ;
+    // const STARTERS_FN_PARAM: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::Identifier,
+    //     ],
+    //     includes = []
+    // };
+    // fn parse_fn_param(&mut self) {}
+    //
+    // /// fnReturnDecl
+    // ///     : "->" typeExpr
+    // ///     ;
+    // const STARTERS_FN_RETURN_DECL: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::RightArrow,
+    //     ],
+    //     includes = []
+    // };
+    // fn parse_fn_return_decl(&mut self) {}
+    //
+    // /// fnBody
+    // ///     : "=" expr
+    // ///     : block
+    // ///     ;
+    // const STARTERS_FN_BODY: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::Assign,
+    //     ],
+    //     includes = [
+    //         CSTParser::STARTERS_BLOCK,
+    //     ]
+    // };
+    // fn parse_fn_body(&mut self) {}
+    //
+    // /// variableDecl
+    // ///     : "let" "mut"? id ":" typeExpr "=" expr
+    // ///     ;
+    // const STARTERS_VARIABLE_DECL: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::Let,
+    //     ],
+    //     includes = []
+    // };
+    // fn parse_variable_decl(&mut self) {}
+    //
+    // /// controlStmt
+    // ///     : "return" expr?
+    // ///     : "break"
+    // ///     : "continue"
+    // ///     ;
+    // const STARTERS_CONTROL_STMT: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::Return,
+    //         TokenKind::Break,
+    //         TokenKind::Continue,
+    //     ],
+    //     includes = []
+    // };
+    // fn parse_control_stmt(&mut self) {}
+    //
+    // /// ifStmt
+    // ///     : "if" expr expr ("else" (expr | ifStmt))?
+    // ///     ;
+    // const STARTERS_IF_STMT: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::If
+    //     ],
+    //     includes = []
+    // };
+    // fn parse_if_stmt(&mut self) {}
+    //
+    // /// whileStmt
+    // ///     : "while" expr expr
+    // ///     ;
+    // const STARTERS_WHILE_STMT: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::While
+    //     ],
+    //     includes = []
+    // };
+    // fn parse_while_stmt(&mut self) {}
+    //
+    // /// typeExpr
+    // ///     : modulePathSpec "?"?
+    // ///     ;
+    // const STARTERS_TYPE_EXPR: TokenSet = token_set! {
+    //     tokens = [],
+    //     includes = [
+    //         CSTParser::STARTERS_MODULE_PATH_SPEC
+    //     ]
+    // };
+    // fn parse_type_expr(&mut self) {}
+    //
+    // /// expr
+    // ///     : literal
+    // ///     : expr operator expr
+    // ///     : operator expr
+    // ///     : "(" expr ")"
+    // ///     : block
+    // ///     ;
+    // const STARTERS_UNARY_OPERATOR: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::Add,
+    //         TokenKind::Sub,
+    //         TokenKind::Not,
+    //         TokenKind::BitNot,
+    //     ],
+    //     includes = []
+    // };
+    // const STARTERS_EXPR: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::LeftParen
+    //     ],
+    //     includes = [
+    //         CSTParser::STARTERS_LITERAL
+    //     ]
+    // };
+    // fn parse_expr(&mut self) {}
+    //
+    // /// block
+    // ///     : "{" statement* "}"
+    // ///     ;
+    // const STARTERS_BLOCK: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::LeftBrace,
+    //     ],
+    //     includes = []
+    // };
+    // fn parse_block(&mut self) {}
+    //
+    // /// literal
+    // ///     : integer
+    // ///     : float
+    // ///     : string
+    // ///     : boolean
+    // ///     : null
+    // ///     : identifier
+    // ///     ;
+    // const STARTERS_LITERAL: TokenSet = token_set! {
+    //     tokens = [
+    //         TokenKind::Integer,
+    //         TokenKind::Float,
+    //         TokenKind::String,
+    //         TokenKind::True,
+    //         TokenKind::Null,
+    //         TokenKind::Identifier,
+    //     ],
+    //     includes = []
+    // };
+    // fn parse_literal(&mut self) {}
 
-    fn parse_variable_decl(&mut self) {
-        let m = self.open();
-        match self.current() {
-            TokenKind::Let | TokenKind::Const => {}
-            _ => panic!("unexpected token"),
-        }
-        self.advance();
+    // fn parse_file(&mut self) {
+    //     let m = self.open();
+    //
+    //     while !self.eof() {
+    //         match self.current() {
+    //             TokenKind::Module => self.parse_module_decl(),
+    //             TokenKind::Let | TokenKind::Const => self.parse_variable_decl(),
+    //             _ => self.parse_expression(),
+    //         }
+    //     }
+    //
+    //     self.close(m, CSTTreeKind::File);
+    // }
+    //
+    // fn parse_module_decl(&mut self) {
+    //     assert_eq!(self.current(), TokenKind::Module);
+    //     let m = self.open();
+    //     self.expect(TokenKind::Module);
+    //     self.parse_name(true);
+    //     self.close(m, CSTTreeKind::ModuleDeclaration);
+    // }
+    //
+    // fn parse_variable_decl(&mut self) {
+    //     let m = self.open();
+    //     match self.current() {
+    //         TokenKind::Let | TokenKind::Const => {}
+    //         _ => panic!("unexpected token"),
+    //     }
+    //     self.advance();
+    //
+    //     self.parse_name(false);
+    //
+    //     if self.eat(TokenKind::Assign) {
+    //         self.parse_expression();
+    //     }
+    //
+    //     self.close(m, CSTTreeKind::Declaration);
+    // }
+    //
+    // fn parse_expression(&mut self) {
+    //     self.parse_expression_rec(TokenKind::Eof);
+    // }
+    //
+    // fn parse_expression_rec(&mut self, left: TokenKind) {
+    //     let mut lhs = self.parse_expression_delimited();
+    //
+    //     while self.at(TokenKind::LeftParen) {
+    //         let m = self.open_before(&lhs);
+    //         self.parse_argument_list();
+    //         lhs = self.close(m, CSTTreeKind::CallOp)
+    //     }
+    //
+    //     loop {
+    //         let right = self.current();
+    //         if Self::right_operator_is_tighter(left, right) {
+    //             let m = self.open_before(&lhs);
+    //             self.advance();
+    //             self.parse_expression_rec(right);
+    //             lhs = self.close(m, CSTTreeKind::BinaryOp);
+    //         } else {
+    //             break;
+    //         }
+    //     }
+    // }
+    //
+    // fn parse_argument_list(&mut self) {
+    //     assert!(self.at(TokenKind::LeftParen));
+    //     let m = self.open();
+    //
+    //     self.expect(TokenKind::LeftParen);
+    //     while !self.at(TokenKind::RightParen) && !self.eof() {
+    //         self.parse_argument();
+    //     }
+    //     self.expect(TokenKind::RightParen);
+    //
+    //     self.close(m, CSTTreeKind::CallArgumentList);
+    // }
+    //
+    // fn parse_argument(&mut self) {
+    //     let m = self.open();
+    //     self.parse_expression();
+    //
+    //     if !self.at(TokenKind::RightParen) {
+    //         self.expect(TokenKind::Comma);
+    //     }
+    //
+    //     self.close(m, CSTTreeKind::CallArgument);
+    // }
+    //
+    // fn parse_expression_delimited(&mut self) -> MarkClosed {
+    //     match self.current() {
+    //         // literals
+    //         TokenKind::Identifier
+    //         | TokenKind::Integer
+    //         | TokenKind::Float
+    //         | TokenKind::String
+    //         | TokenKind::True
+    //         | TokenKind::False
+    //         | TokenKind::Null
+    //         | TokenKind::Super => {
+    //             let m = self.open();
+    //             self.advance();
+    //             self.close(m, CSTTreeKind::Literal)
+    //         }
+    //
+    //         // ( expr )
+    //         TokenKind::LeftParen => {
+    //             let m = self.open();
+    //             self.advance();
+    //             self.parse_expression();
+    //             self.expect(TokenKind::RightParen);
+    //             self.close(m, CSTTreeKind::Paren)
+    //         }
+    //
+    //         // format strings
+    //         TokenKind::FormatStringPart => todo!("format strings not implemented"),
+    //
+    //         _ => {
+    //             let m = self.open();
+    //             if !self.eof() {
+    //                 self.advance_with_error("unexpected token");
+    //             }
+    //             self.close(m, CSTTreeKind::Error)
+    //         }
+    //     }
+    // }
+    //
+    // fn parse_name(&mut self, allow_qualified: bool) {
+    //     let m = self.open();
+    //     self.expect(TokenKind::Identifier);
+    //     if allow_qualified {
+    //         while self.eat(TokenKind::Dot) {
+    //             self.expect(TokenKind::Identifier);
+    //         }
+    //     }
+    //
+    //     self.close(m, CSTTreeKind::Name);
+    // }
 
-        self.parse_name(false);
-
-        if self.eat(TokenKind::Assign) {
-            self.parse_expression();
-        }
-
-        self.close(m, CSTTreeKind::Declaration);
-    }
-
-    fn parse_expression(&mut self) {
-        self.parse_expression_rec(TokenKind::Eof);
-    }
-
-    fn parse_expression_rec(&mut self, left: TokenKind) {
-        let mut lhs = self.parse_expression_delimited();
-
-        while self.at(TokenKind::LeftParen) {
-            let m = self.open_before(&lhs);
-            self.parse_argument_list();
-            lhs = self.close(m, CSTTreeKind::CallOp)
-        }
-
-        loop {
-            let right = self.current();
-            if Self::right_binds_tighter(left, right) {
-                let m = self.open_before(&lhs);
-                self.advance();
-                self.parse_expression_rec(right);
-                lhs = self.close(m, CSTTreeKind::BinaryOp);
-            } else {
-                break;
-            }
-        }
-    }
-
-    fn right_binds_tighter(left: TokenKind, right: TokenKind) -> bool {
+    fn right_operator_is_tighter(left: TokenKind, right: TokenKind) -> bool {
         /// the further down in the list an operator is,
         /// the tighter it binds
         ///
@@ -141,8 +619,8 @@ impl<'a> CSTParser<'a> {
             let list = [
                 [Or].as_slice(),
                 [And].as_slice(),
+                [QuestionMarkColon].as_slice(),
                 [Eq, Neq].as_slice(),
-                [Instanceof].as_slice(),
                 [Lt, Gt, Lte, Gte].as_slice(),
                 [BitLeftShift, BitRightShift, BitUnsignedRightShift].as_slice(),
                 [BitOr].as_slice(),
@@ -163,80 +641,6 @@ impl<'a> CSTParser<'a> {
             return true;
         };
         right > left
-    }
-
-    fn parse_argument_list(&mut self) {
-        assert!(self.at(TokenKind::LeftParen));
-        let m = self.open();
-
-        self.expect(TokenKind::LeftParen);
-        while !self.at(TokenKind::RightParen) && !self.eof() {
-            self.parse_argument();
-        }
-        self.expect(TokenKind::RightParen);
-
-        self.close(m, CSTTreeKind::CallArgumentList);
-    }
-
-    fn parse_argument(&mut self) {
-        let m = self.open();
-        self.parse_expression();
-
-        if !self.at(TokenKind::RightParen) {
-            self.expect(TokenKind::Comma);
-        }
-
-        self.close(m, CSTTreeKind::CallArgument);
-    }
-
-    fn parse_expression_delimited(&mut self) -> MarkClosed {
-        match self.current() {
-            // literals
-            TokenKind::Identifier
-            | TokenKind::Integer
-            | TokenKind::Float
-            | TokenKind::String
-            | TokenKind::True
-            | TokenKind::False
-            | TokenKind::Null
-            | TokenKind::Super => {
-                let m = self.open();
-                self.advance();
-                self.close(m, CSTTreeKind::Literal)
-            }
-
-            // ( expr )
-            TokenKind::LeftParen => {
-                let m = self.open();
-                self.advance();
-                self.parse_expression();
-                self.expect(TokenKind::RightParen);
-                self.close(m, CSTTreeKind::Paren)
-            }
-
-            // format strings
-            TokenKind::FormatStringPart => todo!("format strings not implemented"),
-
-            _ => {
-                let m = self.open();
-                if !self.eof() {
-                    self.advance_with_error("unexpected token");
-                }
-                self.close(m, CSTTreeKind::Error)
-            }
-        }
-    }
-
-    fn parse_name(&mut self, allow_qualified: bool) {
-        let m = self.open();
-        self.expect(TokenKind::Identifier);
-        if allow_qualified {
-            while self.eat(TokenKind::Dot) {
-                self.expect(TokenKind::Identifier);
-            }
-        }
-
-        self.close(m, CSTTreeKind::Name);
     }
 
     fn open(&mut self) -> MarkOpened {
@@ -266,12 +670,12 @@ impl<'a> CSTParser<'a> {
 
     fn advance(&mut self) {
         assert!(!self.eof());
-        self.fuel.set(256);
+        self.fuel = 256;
         self.events.push(Event::Advance);
         self.pos += 1;
     }
 
-    fn eof(&self) -> bool {
+    fn eof(&mut self) -> bool {
         self.current() == TokenKind::Eof
     }
 
@@ -283,20 +687,28 @@ impl<'a> CSTParser<'a> {
         }
     }
 
-    fn nth(&self, lookahead: usize) -> TokenKind {
-        if self.fuel.get() == 0 {
+    fn nth(&mut self, lookahead: usize) -> TokenKind {
+        if self.fuel == 0 {
             panic!("parser ran out of fuel");
         }
-        self.fuel.set(self.fuel.get() - 1);
+        self.fuel = self.fuel - 1;
         self.nth_token(lookahead).kind
     }
 
-    fn current(&self) -> TokenKind {
+    fn current(&mut self) -> TokenKind {
         self.nth(0)
     }
 
-    fn at(&self, kind: TokenKind) -> bool {
+    fn current_token(&self) -> &Token {
+        self.nth_token(0)
+    }
+
+    fn at(&mut self, kind: TokenKind) -> bool {
         self.current() == kind
+    }
+
+    fn at_set(&mut self, types: TokenSet) -> bool {
+        types.contains(&self.current())
     }
 
     fn eat(&mut self, kind: TokenKind) -> bool {
@@ -312,7 +724,7 @@ impl<'a> CSTParser<'a> {
         if self.eat(kind) {
             return;
         }
-        self.unexpected_token(kind);
+        self.unexpected_token(&[kind]);
     }
 
     fn advance_with_error(&mut self, error: &str) {
@@ -324,14 +736,66 @@ impl<'a> CSTParser<'a> {
         self.close(m, CSTTreeKind::Error);
     }
 
-    fn unexpected_token(&mut self, expected: TokenKind) {
+    // consume unexpected tokens until one is found that is contained within
+    // the terminator set
+    // if at least one unexpected token was consumed, a diagnostic error is reported
+    fn skip_unexpected_until(&mut self, terminators: &[&TokenSet]) {
+        // merge the tokensets
+        let terminators = {
+            let mut result = Vec::new();
+            for set in terminators {
+                for token in set.iter() {
+                    result.push(*token);
+                }
+            }
+            result
+        };
+
+        let mut skipped_unexpected_tokens = 0;
+        let start_loc = self.current_token().location.clone();
+        let mut end_loc = start_loc.clone();
+        while !self.eof() {
+            // found an expected token, stop skipping
+            if terminators.contains(&self.current()) {
+                break;
+            }
+
+            end_loc = self.current_token().location.clone();
+            skipped_unexpected_tokens += 1;
+            self.advance();
+        }
+
+        if skipped_unexpected_tokens > 0 {
+            let merged_location = start_loc.merge(&end_loc);
+            self.diagnostic_context.error(
+                format!("unexpected tokens, expected {:?}", terminators).as_str(),
+                &merged_location,
+                vec![],
+                vec![],
+            );
+            return;
+        }
+
+        if self.eof() {
+            let current_loc = self.current_token().location.clone();
+            self.diagnostic_context.error(
+                format!("unexpected end of file, expected {:?}", terminators).as_str(),
+                &current_loc,
+                vec![],
+                vec![],
+            );
+            return;
+        }
+    }
+
+    fn unexpected_token(&mut self, expected: &[TokenKind]) {
         let (kind, location) = {
             let current = self.nth_token(0);
             (current.kind, current.location.clone())
         };
 
         self.diagnostic_context.error(
-            format!("expected token {:?}, got {:?}", expected, kind).as_str(),
+            format!("expected token(s) {:?}, got {:?}", expected, kind).as_str(),
             &location,
             vec![],
             vec![],
@@ -388,7 +852,7 @@ mod tests {
     use crate::charly::utils::ascii_tree::IndentStyle;
     use crate::charly::utils::cst_printer::CstPrinter;
     use crate::charly::utils::diagnostics::DiagnosticController;
-    use indoc::indoc;
+    use clap::builder::TypedValueParser;
     use pretty_assertions::assert_eq;
     use std::path::PathBuf;
 
@@ -413,246 +877,5 @@ mod tests {
 
         assert_eq!(tree_formatted.trim_end(), expected_tree.trim_end(),);
         validate_expected_diagnostics(&context, expected_diagnostics);
-    }
-
-    #[test]
-    fn test_parse_module_decl() {
-        let source = r#"
-            module foo
-            module foo.bar
-            module foo.bar.baz
-        "#;
-
-        assert_tree(
-            source,
-            indoc! {"
-                File
-                  ModuleDeclaration
-                    Module
-                    Name
-                      Identifier(foo)
-                  ModuleDeclaration
-                    Module
-                    Name
-                      Identifier(foo)
-                      Dot
-                      Identifier(bar)
-                  ModuleDeclaration
-                    Module
-                    Name
-                      Identifier(foo)
-                      Dot
-                      Identifier(bar)
-                      Dot
-                      Identifier(baz)
-            "},
-            &[],
-        );
-    }
-
-    #[test]
-    fn test_parse_declarations() {
-        let source = r#"
-            let a
-            let b = 100
-            const c = 200
-        "#;
-
-        assert_tree(
-            source,
-            indoc! {"
-                File
-                  Declaration
-                    Let
-                    Name
-                      Identifier(a)
-                  Declaration
-                    Let
-                    Name
-                      Identifier(b)
-                    Assign
-                    Literal
-                      Integer(100)
-                  Declaration
-                    Const
-                    Name
-                      Identifier(c)
-                    Assign
-                    Literal
-                      Integer(200)
-            "},
-            &[],
-        );
-    }
-
-    #[test]
-    fn test_parse_binop() {
-        let source = r#"
-            let a = 10 + 20 * 30 > 100 == false && true || false
-        "#;
-
-        assert_tree(
-            source,
-            indoc! {"
-                File
-                  Declaration
-                    Let
-                    Name
-                      Identifier(a)
-                    Assign
-                    BinaryOp
-                      BinaryOp
-                        BinaryOp
-                          BinaryOp
-                            BinaryOp
-                              Literal
-                                Integer(10)
-                              Add
-                              BinaryOp
-                                Literal
-                                  Integer(20)
-                                Mul
-                                Literal
-                                  Integer(30)
-                            Gt
-                            Literal
-                              Integer(100)
-                          Eq
-                          Literal
-                            False
-                        And
-                        Literal
-                          True
-                      Or
-                      Literal
-                        False
-            "},
-            &[],
-        );
-    }
-
-    #[test]
-    fn test_parse_call_expr() {
-        let source = r#"
-            let a = foo(10, 20, bar(30) * 2) * 2
-        "#;
-
-        assert_tree(
-            source,
-            indoc! {"
-                File
-                  Declaration
-                    Let
-                    Name
-                      Identifier(a)
-                    Assign
-                    BinaryOp
-                      CallOp
-                        Literal
-                          Identifier(foo)
-                        CallArgumentList
-                          LeftParen
-                          CallArgument
-                            Literal
-                              Integer(10)
-                            Comma
-                          CallArgument
-                            Literal
-                              Integer(20)
-                            Comma
-                          CallArgument
-                            BinaryOp
-                              CallOp
-                                Literal
-                                  Identifier(bar)
-                                CallArgumentList
-                                  LeftParen
-                                  CallArgument
-                                    Literal
-                                      Integer(30)
-                                  RightParen
-                              Mul
-                              Literal
-                                Integer(2)
-                          RightParen
-                      Mul
-                      Literal
-                        Integer(2)
-            "},
-            &[],
-        );
-    }
-
-    #[test]
-    fn test_parse_expressions() {
-        let source = r#"
-            let a = 100
-            let b = foo
-            let c = 10 + 20 * 30 + 40
-            let d = c + 1 == (200 / 20)
-        "#;
-
-        assert_tree(
-            source,
-            indoc! {"
-                File
-                  Declaration
-                    Let
-                    Name
-                      Identifier(a)
-                    Assign
-                    Literal
-                      Integer(100)
-                  Declaration
-                    Let
-                    Name
-                      Identifier(b)
-                    Assign
-                    Literal
-                      Identifier(foo)
-                  Declaration
-                    Let
-                    Name
-                      Identifier(c)
-                    Assign
-                    BinaryOp
-                      BinaryOp
-                        Literal
-                          Integer(10)
-                        Add
-                        BinaryOp
-                          Literal
-                            Integer(20)
-                          Mul
-                          Literal
-                            Integer(30)
-                      Add
-                      Literal
-                        Integer(40)
-                  Declaration
-                    Let
-                    Name
-                      Identifier(d)
-                    Assign
-                    BinaryOp
-                      BinaryOp
-                        Literal
-                          Identifier(c)
-                        Add
-                        Literal
-                          Integer(1)
-                      Eq
-                      Paren
-                        LeftParen
-                        BinaryOp
-                          Literal
-                            Integer(200)
-                          Div
-                          Literal
-                            Integer(20)
-                        RightParen
-            "},
-            &[],
-        );
     }
 }
