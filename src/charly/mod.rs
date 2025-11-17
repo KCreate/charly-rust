@@ -24,6 +24,7 @@ mod compiler;
 mod test_utils;
 mod utils;
 
+use crate::charly::compiler::cst_parser::CSTParser;
 use crate::charly::compiler::token::TokenKind;
 use crate::charly::compiler::tokenizer::{TokenDetailLevel, Tokenizer};
 use crate::charly::utils::ascii_tree::AsciiTree;
@@ -52,9 +53,19 @@ pub fn run(cli: Args) -> ExitCode {
             let path = PathBuf::try_from("repl").unwrap();
             let mut rl = DefaultEditor::new().unwrap();
             loop {
-                match (rl.readline("> ")) {
+                match rl.readline("> ") {
                     Ok(line) => match line.trim() {
                         ".exit" => break,
+                        ".clear" => {
+                            rl.clear_history().expect("Failed to clear history");
+                            continue;
+                        }
+                        ".help" => {
+                            println!("Help:");
+                            println!("  .exit       Exit the REPL");
+                            println!("  .clear      Clear REPL history");
+                            println!("  .help       Show this message");
+                        }
                         _ => {
                             compile(&debug_args, &path, &line);
                             rl.add_history_entry(&line).unwrap();
@@ -63,9 +74,7 @@ pub fn run(cli: Args) -> ExitCode {
                     Err(ReadlineError::Interrupted) => {
                         break;
                     }
-                    Err(ReadlineError::Eof) => {
-                        continue;
-                    }
+                    Err(ReadlineError::Eof) => continue,
                     Err(err) => {
                         println!("Error: {:?}", err);
                         break;
@@ -125,18 +134,18 @@ fn compile(debug_args: &DebugArgs, path: &PathBuf, content: &str) {
                     let kind_str = format!("{:?}", token.kind);
                     let kind_str = format!("{:<32}", kind_str);
                     let text_fmt = format!("{:<16}", token.raw);
-                    println!("{}: {} {}", kind_str, text_fmt, token.location.span);
+                    println!("{}: {} {}", kind_str, text_fmt, token.location.span.start);
                 }
             }
         }
     }
 
-    // let mut parser = CSTParser::new(&tokens, context);
-    // let tree = parser.parse();
-    //
-    // if debug_args.dump_cst {
-    //     println!("{}", tree);
-    // }
+    let mut parser = CSTParser::new(&tokens, context);
+    let tree = parser.parse();
+
+    if debug_args.dump_cst {
+        println!("{}", tree);
+    }
 
     controller.print_diagnostics();
 }

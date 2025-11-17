@@ -68,6 +68,8 @@ impl CstPrinter {
             node_name = node_name.fg(name_color).to_string();
         }
 
+        node_name.push_str(format!(" {}", tree.location().span.start).as_str());
+
         let mut root = AsciiTree::new_with_style(node_name.as_str(), self.indent_style);
 
         for child in &tree.children {

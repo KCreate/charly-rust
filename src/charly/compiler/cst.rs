@@ -20,23 +20,19 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use std::fmt::{Display, Formatter};
-
 use crate::charly::compiler::token::Token;
 use crate::charly::utils::ascii_tree::IndentStyle;
 use crate::charly::utils::cst_printer::CstPrinter;
 use crate::charly::utils::diagnostics::DiagnosticLocation;
+use std::fmt::{Display, Formatter};
 
+#[allow(unused)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CSTTreeKind {
     Error,
     File,
 
     // statements
-    Stmt,
-    DeclStmt,
-    FlowStmt,
-    ExprStmt,
     Block,
 
     // module decl
@@ -79,7 +75,10 @@ pub enum CSTTreeKind {
     VariableDecl,
 
     // control flow stmt
-    IfStmt,
+    ReturnStmt,
+    BreakStmt,
+    ContinueStmt,
+    IfExpr,
     WhileStmt,
     ForStmt,
     LoopStmt,
@@ -98,7 +97,7 @@ pub enum CSTTreeKind {
     ThrowStmt,
 
     // try catch finally stmt
-    TryStmt,
+    TryExpr,
     CatchStmt,
     FinallyStmt,
 
@@ -112,13 +111,18 @@ pub enum CSTTreeKind {
 
     // expressions
     Literal,
+    Identifier,
+    FormatString,
     AwaitExpr,
-    BinOpExpr,
-    UnaryOpExpr,
+    PrefixOpExpr,
+    InfixOpExpr,
+    PostfixOpExpr,
     CallExpr,
     IndexExpr,
     MemberExpr,
+    NullableMemberExpr,
     RangeExpr,
+    ParenExpr,
 
     // literals
     FStringLiteral,
@@ -126,7 +130,8 @@ pub enum CSTTreeKind {
     ListLiteral,
 
     // lambda literal
-    LambdaLiteral,
+    LambdaExprFormLiteral,
+    LambdaBlockFormLiteral,
     LambdaParameterDecl,
 
     // map literal
@@ -178,7 +183,7 @@ impl CSTNode {
 impl Display for CSTTree {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut printer = CstPrinter::new();
-        printer.set_indent_style(IndentStyle::Plain);
+        printer.set_indent_style(IndentStyle::Unicode);
         let text = printer.format(self);
         write!(f, "{}", text)
     }

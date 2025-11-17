@@ -37,7 +37,7 @@ pub struct TextSpan {
 
 impl Display for TextPosition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "<{}:{}:{}>", self.byte_offset, self.line, self.column)
+        write!(f, "<{}:{}>", self.line, self.column)
     }
 }
 

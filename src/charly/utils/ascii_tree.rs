@@ -28,6 +28,7 @@ pub struct AsciiTree {
     indent_style: IndentStyle,
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone, Copy)]
 pub enum IndentStyle {
     Unicode,
@@ -71,6 +72,7 @@ impl Default for IndentStyle {
     }
 }
 
+#[allow(unused)]
 impl AsciiTree {
     pub fn new(text: &str) -> Self {
         Self {

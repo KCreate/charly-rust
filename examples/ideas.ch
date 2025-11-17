@@ -1,216 +1,194 @@
-//let foo = 100
-//let foo = foo
-//let foo = (100)
-//let foo = (foo)
-//let foo = foo()
-//let foo = foo(1, 2, foo(3, 4))
-//let foo = 10 + 20 * 30 + 40
-//let a = 10 + 20 * 30 > 100 == false && true || false
-let a = foo(10, 20, bar(30) * 2) * 2
-
-
-
-const valuePrinter = { value ->
-    println(value)
+enum Result<R, E> {
+    Ok(R),
+    Err(E)
 }
 
-repeat(100) { valuePrinter(it) }
-repeat(100, valuePrinter)
+enum Color {
+    RGB(r: Int, g: Int, b: Int),
+    HSV(hue: Int, sat: Int, val: Int),
+    Grayscale(val: Int)
 
-struct ValuePrinter(
-    val title: String
-) {
-    fn call(value: Any) {
-        println("$title: value")
+}
+
+impl Color {
+    fn toRGB -> (Int, Int, Int) {
+        match self {
+            is RGB then (self.r, self.g, self.b),
+            is HSV then (?, ?, ?),
+            is Grayscale then .........
+        }
     }
 }
 
-const printer = ValuePrinter("log")
-
-repeat(100, printer.call)
-
-enum ThreatLevel {
-    None,
-    Low,
-    Medium,
-    High,
-    Extreme
+struct Person {
+    let name: String
+    let age: Int32
+    let hobbies: List<string>
 }
 
-export const defaultPort = 3001
-export const defaultHost = "127.0.0.1"
-
-export let currentThreatLevel = ThreatLevel.Low
-
-const ch = Channel<Int>(8)
-const (result, ok) = ch.read()
-const ok = ch.write(100)
-
-const exc = Exception("some exception")
-
-use runtime::fiber::sleep
-
-const f1 = spawn {
-    sleep(2.seconds)
-    exc.updateStackTrace()
-    throw exc
+interface FooBar {
+    fn doStuff -> Int32
 }
 
-const f2 = spawn {
-    await f1
+impl Person {
+    fn doStuff -> String { ... }
 }
 
-const f3 = spawn {
-    await f1
-}
-
-const e1 = await f2 catch it
-const e2 = await f3 catch it
-
-assert e1 === e2
-assert e1 === exc
-assert e2 === exc
-
-
-
-const ch1 = Channel<String>(0)
-const ch2 = Channel<String>(0)
-
-spawn {
-    sleep(1.second())
-    ch2.write("hello world")
+impl FooBar for Person {
+    fn doStuff -> Int32 { ... }
 }
 
 select {
-    ch1.read() -> { value, ok ->
-        // ch1 was available first
-    }
 
-    ch2.read() -> { value, ok ->
-        // ch2 was available first
-        // in this example, this will execute
-    }
+    // with explicit result value
+    when result = channel.read() then {}
+    when result = channel.send(value) into result then { ... }
+    when result = await future into result then { ... }
+
+    // with implicit result value
+    when channel.read() then match it {  }
+    when channel.send(value) then match it { ... }
+    when await future then match it { ... }
+
+    else => { ... }
+}
+// import syntax
+import std::foo::bar::*
+import std::foo::bar::File
+import std::foo::bar::{ Foo, Bar, Baz }
+import std::foo::bar::File as MyFile
+import std::foo::bar::{
+    Foo as MyFoo,
+    Bar as MyBar,
+    Baz as MyBaz,
 }
 
-const entry: Map<String>::Entry? = null
+// will import the File type from the package std::foo::bar
+// the package must be located at <import path>/std/foo/bar
+// the directory a file is located in determines the package it is in
+import std::foo::bar::File
 
-typealias MyFunc = (Int, ...Int) -> Int
-
-const f: MyFunc = { initial, ...values ->
-    let sum = initial
-    for n in values sum += n
-    return sum
+private struct Foo {
+    let value: String
 }
 
-fn accept(initial: Int, numbers: List<Int>, block: MyFunc) -> Int {
-    return block(initial, ...numbers)
+export struct Bar {
+    let value: Foo
 }
 
-accept(0, [1, 2, 3, 4], f)
+foo = List<String>("hello world")
+foo = foo<String>("hello world")
 
-const q = Channel<Task>(-1)
+users.map &.into<String>()
 
-spawn {
-    repeat(10) {
-        q.send(Task())
-    }
-    q.close()
+users.map { it.into<String>() }
+
+
+enum CSTNode {
+    Tree(type: CSTKind, children: List<CSTNode>),
+    Token(type: TokenKind, text: String, location: Location)
 }
 
-enum <R, E> Result {
-    Ok(value: R)
-    Err(error: E)
-}
-
-loop {
-
-    // source
-    select {
-        q.read() -> { result ->
-            const task = result.unwrap() catch break
-        }
-
-        time.after(1.second()) -> {
-            break
-        }
-
-        else -> {
-            println("none of the above were ready")
-        }
-    }
-
-    // desugared
-    {
-        enum __SelectChoice {
-            Else,
-            Case(index: Int, result: Any)
-        }
-        const __select_cases: Tuple<Future<Task, Exception>, Future<Unit, Exception>> = (q.read(), time.after(1.second()))
-        const __select_choice: __SelectChoice = runtime::fiber::select_impl(__select_cases, /*has_else=*/true)
-        when __select_choice {
-            Case(_, __select_result) if __select_choice.index == 0 -> {
-                const result = __select_result as Result<Task, Exception>
-                {
-                    const task = result.unwrap() catch break
-                }
-            }
-
-            Case(_, __select_result) if __select_choice.index == 1 -> {
-                const it = __select_result as Result<Unit, Exception>
-                {
-                    break
-                }
-            }
-
-            Else -> {
-                println("none of the above were ready")
-            }
-        }
-    }
-
-    // desugared
-    {
-        enum __SelectChoice {
-            Else,
-            Case(index: Int, result: Any)
-        }
-        const __select_cases: Tuple<Future<Task, Exception>, Future<Unit, Exception>> = (q.read(), time.after(1.second()))
-        const __select_choice: __SelectChoice = runtime::fiber::select_impl(__select_cases, /*has_else=*/true)
-        {
-        cond0:
-            if (__select_choice is __SelectChoice.Case) {
-                const __select_index = __select_choice.index
-                const __select_result = __select_choice.result
-
-                if (__select_index == 0) {
-                    const result = __select_result as Result<Task, Exception>
-                    {
-                        const task = result.unwrap() catch break
-                    }
-                } else goto cond1
-            }
-
-        cond1:
-            if (__select_choice is __SelectChoice.Case) {
-                const __select_index = __select_choice.index
-                const __select_result = __select_choice.result
-
-                if (__select_index == 1) {
-                    const it = __select_result as Result<Unit, Exception>
-                    {
-                        break
-                    }
-                } else goto cond2
-            }
-
-        cond2:
-            if (__select_choice is __SelectChoice.Else) {
-                println("none of the above were ready")
+impl CSTNode {
+    fn location(self) -> Location {
+        return match self {
+            is Token(_, _, location) then location
+            is Tree(_, children) then {
+                assert children.size > 0
+                return Location.merge(
+                    children.first().location(),
+                    children.last().location(),
+                )
             }
         }
     }
 }
 
-const result = result.unwrap() if result.isOk() else break
-const result = result.unwrap() catch break
-const emails = user.email for user in service.users
+struct Box<T> {
+    const value: T
+}
+
+impl<T> Box<T> {
+    #[IR(AllowConstAssignment)]
+    fn constructor(value: T) {
+        self.value = value
+    }
+}
+
+impl<T> Iterable<T> for Box<T> {
+    fn iterator(self) = Iterator<T>.fromList([self.value])
+}
+
+const myLambda: |String, String| -> String = { |left: String, right: String| -> string}
+
+let x: Any = get()
+
+match x {
+    is Person { name, age } => {}
+    is Color(255, 0, 0) => {}
+    is Color(0, 255, 0) => {}
+    is Color(0, 0, 255) => {}
+    is Color(r, g, b) => {}
+}
+
+const adultSwissUserEmails = server.getUsers()
+    .filter -> |x, y| {
+         it.age >= 18
+     }
+    .filter -> { |x, y|
+        it.region == "CH"
+    }
+    .map -> { it.email }
+
+if users.any -> it.age < 18 {
+
+}
+
+const foo = ->|value: String|: String value.length
+const foo = ->|value: String|: String { value.length }
+const foo = ->|value| value.length
+const foo = ->|value| { value.length }
+const foo = ->it.length
+const foo = ->{ value.length }
+
+// match unpack expressions
+match x {
+
+    // enum unpack
+    is Ok => { ... }
+    is Color(r, g, b) => { ... }
+    is Point(0, y, z) => { ... }
+    is Point(x, 0, z) => { ... }
+    is Point(x, y, 0) => { ... }
+    is Point(x, y, z) => { ... }
+
+    // tuple unpack and match
+    (100, name, age) => { ... }
+    else => {}
+}
+
+// field unpack
+const { id, username, email } = request.user
+
+// tuple unpack
+let (a, b, c) = (1, 2, 3)
+let (..., b, c) = (1, 2, 3)
+let (a, ..., c) = (1, 2, 3)
+let (a, b, ...) = (1, 2, 3)
+
+// if / while typecheck
+if let Ok = value {}
+if let Ok(a, b, c) = value {}
+while let Ok = value {}
+while let Ok(a, b, c) = value {}
+
+// typecast syntax
+foo.bar as List<String>
+foo.bar as? List<String>
+
+#[key]
+#[key = value]
+#[key(key = value, value)]
+fn foo {}
+
+// end of file

@@ -1,0 +1,285 @@
+// MIT License
+//
+// Copyright (c) 2025 Leonard Schütz
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+// Todos
+// - Unpack targets for tuples
+// - need to handle confusion between blocks and trailing lambda calls
+
+file ::= <stmt>* ;
+
+<stmt> ::= <moduleDecl>
+         | <useDecl>
+         | <declStmt>
+         | <flowStmt>
+         ;
+
+<declStmt> ::= <fnDecl>
+             | <variableDecl>
+             | <structDecl>
+             | <interfaceDecl>
+             | <typealiasDecl>
+             ;
+
+<flowStmt> ::= "return" <expr>?
+             | "break"
+             | "continue"
+             | <deferStmt>
+             | <throwStmt>
+             | <forStmt>
+             | <whileStmt>
+             | <loopStmt>
+             | <block>
+             | <expr>
+             ;
+
+<block> ::= "{" <stmt>* "}" ;
+
+<moduleDecl> ::= "module" <modulePathSpec> ;
+
+<modulePathSpec> ::= <id> ("::" <id>)* ;
+
+<useDecl> ::= "use" <usePathSpec> ("as" <id>)? ;
+
+<usePathSpec> ::= <typeExpr> <usePathSpecAddition>? ;
+
+<usePathSpecAddition> ::= "::" "*"
+                        | "::" "{" <id> ("," <id>)* "}"
+                        ;
+
+<declModifier> ::= "abstract"
+                 | "override"
+                 | "final"
+                 | "private"
+                 | "operator"
+                 | "builtin"
+                 | "export"
+                 ;
+
+<structDecl> ::= <declModifier>* "struct" <typeExprGenericPart>? <id> <structMemberList>? <structBody>? ;
+
+<structMemberList> ::= "(" <structMemberPart> ("," <structMemberPart>)* ")" ;
+
+<structMemberPart> ::= <variableDecl>
+                     | <fnParam>
+                     ;
+
+<structBody> ::= "{" <structBodyStmt>* "}" ;
+
+<structBodyStmt> ::= <variableDecl>
+                   | <fnDecl>
+                   | <structInitBlock>
+                   | <structDeclModifierBlock>
+                   | <structCompanionObjectDecl>
+                   ;
+
+<structInitBlock> ::= "init" <block> ;
+
+<structDeclModifierBlock> ::= <declModifier>* <structBody> ;
+
+<structCompanionObjectDecl> ::= "companion" "object" <structBody> ;
+
+<interfaceDecl> ::= <declModifier>* "interface" <typeExprGenericPart>? <id> <interfaceBody>? ;
+
+<interfaceBody> ::= <fnDecl>* ;
+
+<typealiasDecl> ::= "typealias" <id> <typeExprGenericPart>? "=" <typeExpr> ;
+
+<fnDecl> ::= <declModifier>* "fn" <typeExprGenericPart>? <fnName> <fnParamList>? <fnReturnDecl>? <fnBody> ;
+
+<fnName> ::= <id> ;
+
+<fnParamList> ::= "(" <fnParam> ("," <fnParam>)* ")" ;
+
+<fnParam> ::= <fnSimpleParam>
+            | <fnSpreadParam>
+            ;
+
+<fnSimpleParam> ::= <id> <typeAnnotation>? ;
+
+<fnSpreadParam> ::= "..." <id> <typeAnnotation>? ;
+
+<fnReturnDecl> ::= "->" <typeExpr> ;
+
+<fnBody> ::= <fnExprBody>
+           | <fnBlockBody>
+           ;
+
+<fnExprBody> ::= "=" <flowStmt> ;
+
+<fnBlockBody> ::= <block> ;
+
+<variableDecl> ::= <declModifier>* ("let" | "const") <id> <typeAnnotation>? "=" <expr> ;
+
+<ifStmt> ::= "if" <expr> "then" <blockOrFlowStmt> <elseStmt>? ;
+
+<elseStmt> ::= "else" <blockOrFlowStmt> ;
+
+<ifPostfixStmt> ::= "if" "(" <expr> ")" <elseStmt> ;
+
+<whileStmt> ::= "while" "(" <expr> ")" <blockOrFlowStmt> ;
+
+<forStmt> ::= "for" "(" <id> "in" <expr> ")" <blockOrFlowStmt> ;
+
+<forPostfixStmt> ::= "for" "(" <id> "in" <expr> ")" ;
+
+<loopStmt> ::= "loop" <blockOrFlowStmt> ;
+
+<whenStmt> ::= "when" ("(" <expr> ")")? <whenBody> ;
+
+<whenBody> ::= <whenCondition> "->" <blockOrFlowStmt> ;
+
+<whenCondition> ::= <whenExprCondition>
+                  | <whenIsCondition>
+                  | <whenElseCondition>
+                  ;
+
+<whenExprCondition> ::= <expr> ;
+
+<whenIsCondition> ::= "is" <typeExpr> <whenIsUnpackPart>? <whenSubCondition>? ;
+
+<whenIsUnpackPart> ::= "(" <id> ("," <id>)* ")" ;
+
+<whenElseCondition> ::= "else" <whenSubCondition>? ;
+
+<whenSubCondition> ::= "if" "(" <expr> ")" ;
+
+<throwStmt> ::= "throw" <expr> ;
+
+<tryStmt> ::= "try" <blockOrExpr> <catchStmt>* <finallyStmt>? ;
+
+<catchStmt> ::= "catch" <fnParamList>? <blockOrFlowStmt> ;
+
+<catchPostfixStmt> ::= "catch" <fnParamList>? <blockOrFlowStmt> ;
+
+<finallyStmt> ::= "finally" <blockOrFlowStmt> ;
+
+<selectStmt> ::= "select" "{" <selectCase>* "}" ;
+
+<selectCase> ::= <selectExprCase>
+               | <selectElseCase>
+               ;
+
+<selectExprCase> ::= <expr> "->" (<lambda> | <flowExpr>) ;
+
+<selectElseCase> ::= "else" "->" (<lambda> | <flowExpr>) ;
+
+<deferStmt> ::= "defer" <blockOrFlowStmt> ;
+
+<blockOrFlowStmt> ::= <block>
+                    | <flowStmt>
+                    ;
+
+<blockOrExpr> ::= <block>
+                | <expr>
+                ;
+
+// operator and expression precedence not modeled in grammar yet
+<expr> ::= <prefixOp> <expr>
+         | <expr> <infixOp> <expr>
+         | <expr> <postfixOp>
+         | <expr> <postfixStmtExpr>
+         | <expr> <postfixLooseExpr>
+         | <expr> <callExpr>
+         | <expr> <indexExpr>
+         | <expr> <memberExpr>
+         | <literal>
+         ;
+
+<postfixStmtExpr> ::= <ifPostfixStmt>
+                    | <catchPostfixStmt>
+                    | <forPostfixStmt>
+                    ;
+
+<callExpr> ::= <expr> ("(" (<expr> ("," <expr>)*)? ")")? <lambda>? ;
+
+<indexExpr> ::= <expr> "[" <expr> ("," <expr>)* "]" ;
+
+<literal> ::= <parenExpr>
+            | <integer>
+            | <float>
+            | <string>
+            | <fstring>
+            | "true" | "false"
+            | "null"
+            | <id>
+            | <lambda>
+            | <tuple>
+            | <list>
+            | <map>
+            | <ifStmt>
+            | <whenStmt>
+            | <tryStmt>
+            | <selectStmt>
+            ;
+
+<parenExpr> ::= "(" <expr> ")" ;
+
+<fstring> ::= <fstringStart> (<expr> | <fstringPart>)* <fstringEnd> ;
+
+<lambda> ::= <lambdaExprForm>
+           | <lambdaBlockForm>
+           ;
+
+<lambdaExprForm> ::= <lambdaParamDecl> <expr>
+
+<lambdaBlockForm> ::= "{" <lambdaParamDecl>? stmt* "}"
+
+<lambdaParamDecl> ::= "|" <fnParam> ("," <fnParam>)* "|" ;
+
+<tuple> ::= "(" <expr> "," ")"
+          | "(" <expr> ("," <expr>)* ")"
+          ;
+
+<list> ::= "[" <expr> ("," <expr>)* "]" ;
+
+<map> ::= "." "{" <mapPart> ("," <mapPart>)* "}" ;
+
+<mapPart> ::= <mapPartKey> ":" <expr> ;
+
+<mapPartKey> ::= <string>
+               | <fstring>
+               ;
+
+<typeAnnotation> ::= ":" <typeExpr> ;
+
+<typeExpr> ::= "::"? <typeExprPart> ("::" <typeExprPart>)* "?"? ;
+
+<typeExprPart> ::= <id> <typeExprGenericPart>? ;
+
+<typeExprGenericPart> ::= "<" <typeExpr> ("," <typeExpr>)* ">" ;
+
+// Terminals / tokens (placeholders)
+<id> ::= /* identifier token */ ;
+<integer> ::= /* integer token */ ;
+<float> ::= /* float token */ ;
+<string> ::= /* string token */ ;
+<fstringStart> ::= /* fstring start token */ ;
+<fstringPart> ::= /* fstring part token */ ;
+<fstringEnd> ::= /* fstring end token */ ;
+
+// Operator placeholders (to be defined elsewhere or by lexer)
+<prefixOp> ::= /* prefix operator token */ ;
+<infixOp> ::= /* infix operator token */ ;
+<postfixOp> ::= /* postfix operator token */ ;
+<postfixLooseExpr> ::= /* loose postfix (e.g., optional chaining) */ ;
+<memberExpr> ::= /* member access (dot/?. handled in parser) */ ;
+<flowExpr> ::= /* flow expression placeholder used in select cases */ ;

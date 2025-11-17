@@ -789,7 +789,7 @@ foo // single line comment
             as assert await break builtin case catch class const continue default
             defer do else export extends final finally for from fn guard if import
             in instanceof let loop match private return spawn static switch throw
-            try typeof unless until while
+            try unless until while
 
             + - * / % ** && || | & ^ << >> >>> ! ~
             == != > >= < <=
@@ -842,7 +842,6 @@ foo // single line comment
                 "Switch",
                 "Throw",
                 "Try",
-                "Typeof",
                 "Unless",
                 "Until",
                 "While",

@@ -21,8 +21,31 @@
 // SOFTWARE.
 
 use crate::charly::utils::diagnostics::DiagnosticLocation;
+use once_cell::sync::Lazy;
+use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use std::num::{ParseFloatError, ParseIntError};
+
+pub type TokenSet = Lazy<HashSet<TokenKind>>;
+
+#[macro_export]
+macro_rules! token_set {
+    (
+        tokens = [ $( $token:expr ),* $(,)? ],
+        includes = [ $( $set:expr ),* $(,)? ]
+    ) => {
+        ::once_cell::sync::Lazy::new(|| {
+            let mut set = ::std::collections::HashSet::<TokenKind>::new();
+            $(
+                set.extend($set.clone());
+            )*
+            $(
+                set.insert($token);
+            )*
+            set
+        })
+    };
+}
 
 #[derive(Debug, Clone)]
 pub struct Token {
@@ -78,7 +101,7 @@ pub enum TokenError {
     MalformedFloat(ParseFloatError),
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Eq, Hash, Debug, PartialEq, Clone, Copy)]
 pub enum TokenKind {
     Error,
     Eof,
@@ -89,12 +112,6 @@ pub enum TokenKind {
     String,
     FormatStringPart,
     Identifier,
-
-    // literal keywords
-    True,
-    False,
-    Null,
-    Super,
 
     // language keywords
     Abstract,
@@ -115,6 +132,7 @@ pub enum TokenKind {
     Else,
     Export,
     Extends,
+    False,
     Final,
     Finally,
     Fn,
@@ -133,6 +151,7 @@ pub enum TokenKind {
     Match,
     Module,
     Mut,
+    Null,
     Object,
     Operator,
     Override,
@@ -142,12 +161,14 @@ pub enum TokenKind {
     Spawn,
     Static,
     Struct,
+    Super,
     Switch,
     Template,
+    Then,
     Throw,
+    True,
     Try,
     Typealias,
-    Typeof,
     Unless,
     Until,
     Use,
@@ -170,6 +191,7 @@ pub enum TokenKind {
     BitRightShift,
     BitUnsignedRightShift,
     Not,
+    DoubleNot,
     BitNot,
 
     // comparison operators
@@ -276,11 +298,11 @@ pub static TOKEN_TEXT_MAPPING: &[(&str, TokenKind)] = &[
     ("super", TokenKind::Super),
     ("switch", TokenKind::Switch),
     ("template", TokenKind::Template),
+    ("then", TokenKind::Then),
     ("throw", TokenKind::Throw),
     ("true", TokenKind::True),
     ("try", TokenKind::Try),
     ("typealias", TokenKind::Typealias),
-    ("typeof", TokenKind::Typeof),
     ("unless", TokenKind::Unless),
     ("until", TokenKind::Until),
     ("use", TokenKind::Use),
@@ -301,6 +323,7 @@ pub static TOKEN_TEXT_MAPPING: &[(&str, TokenKind)] = &[
     (">>", TokenKind::BitRightShift),
     (">>>", TokenKind::BitUnsignedRightShift),
     ("!", TokenKind::Not),
+    ("!!", TokenKind::DoubleNot),
     ("~", TokenKind::BitNot),
     ("==", TokenKind::Eq),
     ("!=", TokenKind::Neq),
@@ -343,6 +366,125 @@ pub static TOKEN_TEXT_MAPPING: &[(&str, TokenKind)] = &[
     ("?:", TokenKind::QuestionMarkColon),
     ("..<", TokenKind::RangeLessThan),
 ];
+
+pub static TOKEN_INFIX_OPERATORS: TokenSet = token_set! {
+    tokens = [
+        TokenKind::Or,
+        TokenKind::And,
+        TokenKind::BitOr,
+        TokenKind::BitXor,
+        TokenKind::BitAnd,
+        TokenKind::Eq,
+        TokenKind::Neq,
+        TokenKind::Gt,
+        TokenKind::Gte,
+        TokenKind::Lt,
+        TokenKind::Lte,
+        TokenKind::BitLeftShift,
+        TokenKind::BitRightShift,
+        TokenKind::BitUnsignedRightShift,
+        TokenKind::Add,
+        TokenKind::Sub,
+        TokenKind::Mul,
+        TokenKind::Div,
+        TokenKind::Mod,
+        TokenKind::Pow,
+        TokenKind::Instanceof,
+        TokenKind::Is,
+        TokenKind::In,
+        TokenKind::QuestionMarkColon,
+        TokenKind::RangeLessThan,
+        TokenKind::DoubleDot,
+    ],
+    includes = []
+};
+
+pub static TOKEN_PREFIX_OPERATORS: TokenSet = token_set! {
+    tokens = [
+        TokenKind::Await,
+        TokenKind::Add,
+        TokenKind::Sub,
+        TokenKind::Not,
+        TokenKind::BitNot,
+        TokenKind::TripleDot,
+    ],
+    includes = []
+};
+
+pub static TOKEN_POSTFIX_OPERATORS: TokenSet = token_set! {
+    tokens = [
+        TokenKind::DoubleNot,
+        TokenKind::If,
+        TokenKind::Catch,
+        TokenKind::For,
+    ],
+    includes = []
+};
+
+pub static TOKEN_LANGUAGE_KEYWORDS: TokenSet = token_set! {
+    tokens = [
+        TokenKind::Abstract,
+        TokenKind::As,
+        TokenKind::Assert,
+        TokenKind::Await,
+        TokenKind::Break,
+        TokenKind::Builtin,
+        TokenKind::Case,
+        TokenKind::Catch,
+        TokenKind::Class,
+        TokenKind::Companion,
+        TokenKind::Const,
+        TokenKind::Continue,
+        TokenKind::Default,
+        TokenKind::Defer,
+        TokenKind::Do,
+        TokenKind::Else,
+        TokenKind::Export,
+        TokenKind::Extends,
+        TokenKind::False,
+        TokenKind::Final,
+        TokenKind::Finally,
+        TokenKind::Fn,
+        TokenKind::For,
+        TokenKind::From,
+        TokenKind::Guard,
+        TokenKind::If,
+        TokenKind::Import,
+        TokenKind::In,
+        TokenKind::Init,
+        TokenKind::Instanceof,
+        TokenKind::Interface,
+        TokenKind::Is,
+        TokenKind::Let,
+        TokenKind::Loop,
+        TokenKind::Match,
+        TokenKind::Module,
+        TokenKind::Mut,
+        TokenKind::Null,
+        TokenKind::Object,
+        TokenKind::Operator,
+        TokenKind::Override,
+        TokenKind::Private,
+        TokenKind::Return,
+        TokenKind::Select,
+        TokenKind::Spawn,
+        TokenKind::Static,
+        TokenKind::Struct,
+        TokenKind::Super,
+        TokenKind::Switch,
+        TokenKind::Template,
+        TokenKind::Throw,
+        TokenKind::True,
+        TokenKind::Try,
+        TokenKind::Typealias,
+        TokenKind::Unless,
+        TokenKind::Until,
+        TokenKind::Use,
+        TokenKind::When,
+        TokenKind::While,
+    ],
+    includes = []
+};
 
 pub static TOKEN_ASSIGN_OPERATOR_MAPPING: &[(TokenKind, TokenKind)] = &[
     (TokenKind::AssignAdd, TokenKind::Add),
