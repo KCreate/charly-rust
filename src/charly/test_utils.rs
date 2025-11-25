@@ -23,7 +23,10 @@
 use crate::charly::utils::diagnostics::DiagnosticContext;
 
 #[track_caller]
-pub fn validate_expected_diagnostics(context: &DiagnosticContext, expected_diagnostics: &[&str]) {
+pub fn validate_expected_diagnostics(
+    context: &DiagnosticContext,
+    expected_diagnostics: &[&str],
+) {
     for diagnostic_message in &context.messages {
         let was_expected = expected_diagnostics
             .iter()

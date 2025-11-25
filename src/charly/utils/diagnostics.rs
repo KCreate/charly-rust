@@ -52,8 +52,8 @@ impl DiagnosticLocation {
 
 impl DiagnosticLocation {
     pub fn offset_range(&self) -> Range<usize> {
-        let start_offset = self.span.start.offset;
-        let end_offset = self.span.end.offset;
+        let start_offset = self.span.start.byte_offset;
+        let end_offset = self.span.end.byte_offset;
         start_offset..end_offset
     }
 }

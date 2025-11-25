@@ -38,7 +38,7 @@ struct MarkClosed {
     index: usize,
 }
 
-/// Implements a Kladov-style parsing algorithm
+/// Implements a Kladov-style parsing algorithm.
 /// Reference: https://matklad.github.io/2023/05/21/resilient-ll-parsing-tutorial.html
 pub struct CSTParser<'a> {
     tokens: &'a Vec<Token>,

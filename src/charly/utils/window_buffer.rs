@@ -24,15 +24,26 @@ use std::fmt::Display;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct TextPosition {
-    /// character-based offset
-    pub offset: usize,
+    pub byte_offset: usize,
+    pub codepoint_offset: usize,
+
+    /// One based line number as would be shown in a text-editor.
     pub line: u32,
+
+    /// One based column number as would be shown in a text-editor.
     pub column: u32,
 }
 
+/// Represents a range between two [TextPosition] values.
+/// The [start] field is inclusive, the [end] field is exclusive.
 #[derive(Debug, Clone, Default)]
 pub struct TextSpan {
+    /// Offsets in the [TextPosition] type reference the first byte / character
+    /// in the span.
     pub start: TextPosition,
+
+    /// Offsets in the [TextPosition] type reference the byte / character immediately
+    /// after the end of this span, NOT the last byte / character in the span.
     pub end: TextPosition,
 }
 
@@ -60,12 +71,14 @@ impl<'a> WindowBuffer<'a> {
             buffer: value,
             window_span: TextSpan {
                 start: TextPosition {
-                    offset: 0,
+                    byte_offset: 0,
+                    codepoint_offset: 0,
                     line: 1,
                     column: 1,
                 },
                 end: TextPosition {
-                    offset: 0,
+                    byte_offset: 0,
+                    codepoint_offset: 0,
                     line: 1,
                     column: 1,
                 },
@@ -110,7 +123,7 @@ impl<'a> WindowBuffer<'a> {
     }
 
     pub fn peek_char_with_lookahead(&self, lookahead: usize) -> Option<char> {
-        let rest_start = self.window_span.end.offset;
+        let rest_start = self.window_span.end.byte_offset;
         let rest_end = self.buffer.len();
         let rest_slice = &self.buffer[rest_start..rest_end];
 
@@ -125,7 +138,7 @@ impl<'a> WindowBuffer<'a> {
     }
 
     pub fn peek_str(&self, length: usize) -> Option<&str> {
-        let rest_start = self.window_span.end.offset;
+        let rest_start = self.window_span.end.byte_offset;
         let rest_end = self.buffer.len();
         let rest_slice = &self.buffer[rest_start..rest_end];
 
@@ -155,12 +168,13 @@ impl<'a> WindowBuffer<'a> {
     }
 
     fn increment_offset(&mut self, char: char) {
-        self.window_span.end.offset += char.len_utf8();
+        self.window_span.end.byte_offset += char.len_utf8();
+        self.window_span.end.codepoint_offset += 1;
     }
 
     pub fn window_as_str(&self) -> &str {
-        let start = self.window_span.start.offset;
-        let end = self.window_span.end.offset;
+        let start = self.window_span.start.byte_offset;
+        let end = self.window_span.end.byte_offset;
         let slice = &self.buffer[start..end];
         slice
     }

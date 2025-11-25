@@ -21,7 +21,7 @@
 // SOFTWARE.
 
 use crate::charly::compiler::token::{
-    IntegerBaseSpecifier, NumberSuffix, Token, TokenKind, TokenValue, TOKEN_MAX_STR_LEN,
+    IntegerBaseSpecifier, NumberSuffix, TOKEN_MAX_STR_LEN, Token, TokenKind, TokenValue,
 };
 use crate::charly::utils::diagnostics::{DiagnosticContext, DiagnosticLocation, FileId};
 use crate::charly::utils::window_buffer::{TextPosition, TextSpan, WindowBuffer};
@@ -49,16 +49,16 @@ pub struct Tokenizer<'a> {
     mode: TokenizerMode,
     diagnostic_context: &'a mut DiagnosticContext,
 
-    /// contains opened paren, brace and bracket tokens
+    /// Contains opened paren, brace and bracket tokens.
     bracket_stack: Vec<TokenKind>,
 
-    /// contains the size of the bracket_stack the last
-    /// time a string interpolation was started
+    /// Contains the size of the bracket_stack the last
+    /// time a string interpolation was started.
     interpolation_stack: Vec<usize>,
 
-    /// keeps track of opened string literals
-    /// stacks grows if a string literal is opened recursively within
-    /// a string interpolation
+    /// Keeps track of opened string literals.
+    /// Stack grows if a string literal is opened recursively within
+    /// a string interpolation.
     opened_strings_stack: Vec<TextPosition>,
 }
 
@@ -493,7 +493,7 @@ impl<'a> Tokenizer<'a> {
         };
 
         let mut range_end = open_quote_position.clone();
-        range_end.offset += 1;
+        range_end.byte_offset += 1;
         range_end.column += 1;
 
         let label_location = self.build_location(&open_quote_position, &range_end);
@@ -591,7 +591,7 @@ impl CharType for char {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::charly::compiler::token::{Token, TOKEN_KEYWORDS, TOKEN_PUNCTUATORS};
+    use crate::charly::compiler::token::{TOKEN_KEYWORDS, TOKEN_PUNCTUATORS, Token};
     use crate::charly::test_utils::validate_expected_diagnostics;
     use crate::charly::utils::diagnostics::DiagnosticController;
     use pretty_assertions::assert_eq;

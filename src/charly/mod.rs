@@ -29,8 +29,8 @@ use crate::charly::compiler::tokenizer::Tokenizer;
 use crate::charly::utils::ascii_tree::AsciiTree;
 use crate::charly::utils::diagnostics::DiagnosticController;
 use crate::{Args, Commands, DebugArgs};
-use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
+use rustyline::error::ReadlineError;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
