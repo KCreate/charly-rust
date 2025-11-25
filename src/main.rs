@@ -20,6 +20,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+extern crate core;
+
 use clap::{Parser, Subcommand};
 use std::process::ExitCode;
 

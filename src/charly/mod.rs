@@ -24,9 +24,8 @@ mod compiler;
 mod test_utils;
 mod utils;
 
-use crate::charly::compiler::cst_parser::CSTParser;
-use crate::charly::compiler::token::TokenKind;
-use crate::charly::compiler::tokenizer::{TokenDetailLevel, Tokenizer};
+use crate::charly::compiler::token::{Token, TokenKind};
+use crate::charly::compiler::tokenizer::Tokenizer;
 use crate::charly::utils::ascii_tree::AsciiTree;
 use crate::charly::utils::diagnostics::DiagnosticController;
 use crate::{Args, Commands, DebugArgs};
@@ -116,36 +115,33 @@ fn compile(debug_args: &DebugArgs, path: &PathBuf, content: &str) {
     let file_id = controller.register_file(&path, content);
     let context = controller.get_or_create_context(file_id);
 
-    let mut tokenizer = Tokenizer::new(content, file_id, context);
-    let detail_level = TokenDetailLevel::NoWhitespaceAndComments;
-    let tokens = tokenizer.tokenize(detail_level);
+    let tokenizer = Tokenizer::new(content, file_id, context);
+    let tokens: Vec<Token> = tokenizer.collect();
 
     if debug_args.dump_source {
         println!("{}", content);
     }
 
     if debug_args.dump_tokens {
-        println!("Got {} tokens", tokens.len());
         for token in &tokens {
             match &token.kind {
                 TokenKind::Newline => continue,
                 TokenKind::Whitespace => continue,
-                _ => {
-                    let kind_str = format!("{:?}", token.kind);
-                    let kind_str = format!("{:<32}", kind_str);
-                    let text_fmt = format!("{:<16}", token.raw);
-                    println!("{}: {} {}", kind_str, text_fmt, token.location.span.start);
-                }
+                _ => println!(
+                    "{:<32}: {}",
+                    format!("{}", token),
+                    token.location.span.start
+                ),
             }
         }
     }
 
-    let mut parser = CSTParser::new(&tokens, context);
-    let tree = parser.parse();
-
-    if debug_args.dump_cst {
-        println!("{}", tree);
-    }
+    // let mut parser = CSTParser::new(&tokens, context);
+    // let tree = parser.parse();
+    //
+    // if debug_args.dump_cst {
+    //     println!("{}", tree);
+    // }
 
     controller.print_diagnostics();
 }

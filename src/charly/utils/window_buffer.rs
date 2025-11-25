@@ -24,7 +24,8 @@ use std::fmt::Display;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct TextPosition {
-    pub byte_offset: usize,
+    /// character-based offset
+    pub offset: usize,
     pub line: u32,
     pub column: u32,
 }
@@ -59,12 +60,12 @@ impl<'a> WindowBuffer<'a> {
             buffer: value,
             window_span: TextSpan {
                 start: TextPosition {
-                    byte_offset: 0,
+                    offset: 0,
                     line: 1,
                     column: 1,
                 },
                 end: TextPosition {
-                    byte_offset: 0,
+                    offset: 0,
                     line: 1,
                     column: 1,
                 },
@@ -74,21 +75,19 @@ impl<'a> WindowBuffer<'a> {
     }
 
     pub fn read_char(&mut self) -> Option<char> {
-        let char = self.peek_char();
-
-        if let Some(char) = char {
-            let char_len = char.len_utf8();
-
-            self.increment_offset(char_len);
-            match char {
-                '\n' => self.increment_row(),
-                _ => self.increment_column(),
+        match self.peek_char() {
+            Some(char) => {
+                self.increment_offset(char);
+                match char {
+                    '\n' => self.increment_row(),
+                    _ => self.increment_column(),
+                }
+                self.last_read_char = Some(char);
+                Some(char)
             }
 
-            self.last_read_char = Some(char);
+            _ => None,
         }
-
-        char
     }
 
     pub fn advance(&mut self, length: usize) {
@@ -97,12 +96,21 @@ impl<'a> WindowBuffer<'a> {
         }
     }
 
+    pub fn eat_char(&mut self, char: char) -> bool {
+        if self.peek_char() == Some(char) {
+            self.advance(1);
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn peek_char(&self) -> Option<char> {
         self.peek_char_with_lookahead(0)
     }
 
     pub fn peek_char_with_lookahead(&self, lookahead: usize) -> Option<char> {
-        let rest_start = self.window_span.end.byte_offset;
+        let rest_start = self.window_span.end.offset;
         let rest_end = self.buffer.len();
         let rest_slice = &self.buffer[rest_start..rest_end];
 
@@ -117,7 +125,7 @@ impl<'a> WindowBuffer<'a> {
     }
 
     pub fn peek_str(&self, length: usize) -> Option<&str> {
-        let rest_start = self.window_span.end.byte_offset;
+        let rest_start = self.window_span.end.offset;
         let rest_end = self.buffer.len();
         let rest_slice = &self.buffer[rest_start..rest_end];
 
@@ -146,13 +154,13 @@ impl<'a> WindowBuffer<'a> {
         self.window_span.end.column += 1;
     }
 
-    fn increment_offset(&mut self, length: usize) {
-        self.window_span.end.byte_offset += length;
+    fn increment_offset(&mut self, char: char) {
+        self.window_span.end.offset += char.len_utf8();
     }
 
     pub fn window_as_str(&self) -> &str {
-        let start = self.window_span.start.byte_offset;
-        let end = self.window_span.end.byte_offset;
+        let start = self.window_span.start.offset;
+        let end = self.window_span.end.offset;
         let slice = &self.buffer[start..end];
         slice
     }

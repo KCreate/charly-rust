@@ -21,7 +21,8 @@
 // SOFTWARE.
 
 use ariadne::{
-    Color, ColorGenerator, Config, IndexType, Label, LabelAttach, Report, ReportKind, Source,
+    Color, ColorGenerator, Config, IndexType, Label, LabelAttach, Report, ReportKind,
+    Source,
 };
 use std::ops::Range;
 use std::path::PathBuf;
@@ -51,8 +52,8 @@ impl DiagnosticLocation {
 
 impl DiagnosticLocation {
     pub fn offset_range(&self) -> Range<usize> {
-        let start_offset = self.span.start.byte_offset;
-        let end_offset = self.span.end.byte_offset;
+        let start_offset = self.span.start.offset;
+        let end_offset = self.span.end.offset;
         start_offset..end_offset
     }
 }
@@ -260,6 +261,11 @@ impl DiagnosticContext {
                 location: location.clone(),
             });
         }
+
+        println!(
+            "added message ({}) starting at {} ending at {}",
+            title, location.span.start, location.span.end
+        );
 
         self.add_message(DiagnosticMessage {
             severity,

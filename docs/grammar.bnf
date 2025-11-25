@@ -20,266 +20,339 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-// Todos
-// - Unpack targets for tuples
-// - need to handle confusion between blocks and trailing lambda calls
+// ------ Grammar ------
 
-file ::= <stmt>* ;
+Program ::= TopLevelItem*
 
-<stmt> ::= <moduleDecl>
-         | <useDecl>
-         | <declStmt>
-         | <flowStmt>
-         ;
+TopLevelItem ::= ImportDecl
+               | FnDecl
+               | VarDecl
+               | TypeAliasDecl
+               | StructDecl
+               | InterfaceDecl
+               | UnionDecl
+               | EnumDecl
+               | ImplDecl
+               | Stmt
 
-<declStmt> ::= <fnDecl>
-             | <variableDecl>
-             | <structDecl>
-             | <interfaceDecl>
-             | <typealiasDecl>
-             ;
+// ------ Import Statement ------
 
-<flowStmt> ::= "return" <expr>?
-             | "break"
-             | "continue"
-             | <deferStmt>
-             | <throwStmt>
-             | <forStmt>
-             | <whileStmt>
-             | <loopStmt>
-             | <block>
-             | <expr>
-             ;
+ImportDecl ::= Attribute* "import" ImportTarget
 
-<block> ::= "{" <stmt>* "}" ;
+ImportTarget ::= ImportSingle
+             | ImportWildcard
 
-<moduleDecl> ::= "module" <modulePathSpec> ;
+ImportSingle ::= ImportPath ImportAsItem?
 
-<modulePathSpec> ::= <id> ("::" <id>)* ;
+ImportWildcard ::= ImportPath "." "*"
 
-<useDecl> ::= "use" <usePathSpec> ("as" <id>)? ;
+ImportPath ::= Id ("." Id)*
 
-<usePathSpec> ::= <typeExpr> <usePathSpecAddition>? ;
+ImportAsItem ::= "as" Id
 
-<usePathSpecAddition> ::= "::" "*"
-                        | "::" "{" <id> ("," <id>)* "}"
-                        ;
+// ------ Declarations ------
 
-<declModifier> ::= "abstract"
-                 | "override"
-                 | "final"
-                 | "private"
-                 | "operator"
-                 | "builtin"
-                 | "export"
-                 ;
+DeclMod ::= "export"
+          | "internal"
+          | "public"
+          | "private"
+          | "static"
+          | "final"
 
-<structDecl> ::= <declModifier>* "struct" <typeExprGenericPart>? <id> <structMemberList>? <structBody>? ;
+// ------ Function Declaration ------
 
-<structMemberList> ::= "(" <structMemberPart> ("," <structMemberPart>)* ")" ;
+FnDecl ::= Attribute* DeclMod* "fn" Id GenericParamList? FnParamList? FnReturnAnnot? FnBody
 
-<structMemberPart> ::= <variableDecl>
-                     | <fnParam>
-                     ;
+FnParamList ::= "(" (FnParam ("," FnParam)*)? ")"
 
-<structBody> ::= "{" <structBodyStmt>* "}" ;
+FnParam ::= "..."? NameDecl
 
-<structBodyStmt> ::= <variableDecl>
-                   | <fnDecl>
-                   | <structInitBlock>
-                   | <structDeclModifierBlock>
-                   | <structCompanionObjectDecl>
-                   ;
+FnReturnAnnot ::= "->" Type
 
-<structInitBlock> ::= "init" <block> ;
+FnBody ::= FnExprBody
+         | FnBlockBody
 
-<structDeclModifierBlock> ::= <declModifier>* <structBody> ;
+FnExprBody ::= "=" ExprLikeStmt
 
-<structCompanionObjectDecl> ::= "companion" "object" <structBody> ;
+FnBlockBody ::= Block
 
-<interfaceDecl> ::= <declModifier>* "interface" <typeExprGenericPart>? <id> <interfaceBody>? ;
+// ------ Variable Declarations ------
 
-<interfaceBody> ::= <fnDecl>* ;
+VarDecl ::= Attribute* DeclMod* ("const" | "let") VarDeclTarget ("=" Expr)?
 
-<typealiasDecl> ::= "typealias" <id> <typeExprGenericPart>? "=" <typeExpr> ;
+VarDeclTarget ::= NameDecl
+                | UnpackTarget
 
-<fnDecl> ::= <declModifier>* "fn" <typeExprGenericPart>? <fnName> <fnParamList>? <fnReturnDecl>? <fnBody> ;
+// ------ Typealias Declarations ------
 
-<fnName> ::= <id> ;
+TypeAliasDecl ::= Attribute* DeclMod* "typealias" Id GenericParamList? ("=" Type)?
 
-<fnParamList> ::= "(" <fnParam> ("," <fnParam>)* ")" ;
+// ------ Struct Declarations ------
 
-<fnParam> ::= <fnSimpleParam>
-            | <fnSpreadParam>
-            ;
+StructDecl ::= Attribute* DeclMod* "struct" Id GenericParamList? StructBody
 
-<fnSimpleParam> ::= <id> <typeAnnotation>? ;
+StructBody ::= "{" StructItem* "}"
 
-<fnSpreadParam> ::= "..." <id> <typeAnnotation>? ;
+StructItem ::= VarDecl
+             | TypeAliasDecl
 
-<fnReturnDecl> ::= "->" <typeExpr> ;
+// ------ Interface Declarations ------
 
-<fnBody> ::= <fnExprBody>
-           | <fnBlockBody>
-           ;
+InterfaceDecl ::= Attribute* DeclMod* "interface" Id GenericParamList? InterfaceExtends* InterfaceBody
 
-<fnExprBody> ::= "=" <flowStmt> ;
+InterfaceExtends ::= "extends" Type ("," Type)*
 
-<fnBlockBody> ::= <block> ;
+InterfaceBody ::= "{" InterfaceItem* "}"
 
-<variableDecl> ::= <declModifier>* ("let" | "const") <id> <typeAnnotation>? "=" <expr> ;
+InterfaceItem ::= FnDecl
+                | TypeAliasDecl
 
-<ifStmt> ::= "if" <expr> "then" <blockOrFlowStmt> <elseStmt>? ;
+// ------ Union Declarations ------
 
-<elseStmt> ::= "else" <blockOrFlowStmt> ;
+UnionDecl ::= Attribute* DeclMod* "union" GenericParamList? UnionBody
 
-<ifPostfixStmt> ::= "if" "(" <expr> ")" <elseStmt> ;
+UnionBody ::= "{" UnionItem ("," UnionItem)* "}"
 
-<whileStmt> ::= "while" "(" <expr> ")" <blockOrFlowStmt> ;
+UnionItem ::= Id UnionItemParams?
 
-<forStmt> ::= "for" "(" <id> "in" <expr> ")" <blockOrFlowStmt> ;
+UnionItemParams ::= "(" NameDecl ("," NameDecl)* ")"
 
-<forPostfixStmt> ::= "for" "(" <id> "in" <expr> ")" ;
+// ------ Enum Declarations ------
 
-<loopStmt> ::= "loop" <blockOrFlowStmt> ;
+EnumDecl ::= Attribute* DeclMod* "enum" EnumHeader EnumBody
 
-<whenStmt> ::= "when" ("(" <expr> ")")? <whenBody> ;
+EnumHeader ::= Id TypeAnnotation
+             | "flags" Id TypeAnnotation?
 
-<whenBody> ::= <whenCondition> "->" <blockOrFlowStmt> ;
+EnumBody ::= "{" EnumItem ("," EnumItem)* "}"
 
-<whenCondition> ::= <whenExprCondition>
-                  | <whenIsCondition>
-                  | <whenElseCondition>
-                  ;
+EnumItem ::= Id ("=" Expr)?
 
-<whenExprCondition> ::= <expr> ;
+// ------ Impl Declarations ------
 
-<whenIsCondition> ::= "is" <typeExpr> <whenIsUnpackPart>? <whenSubCondition>? ;
+ImplDecl ::= Attribute* "impl" GenericParamList? ImplTarget ImplBody
 
-<whenIsUnpackPart> ::= "(" <id> ("," <id>)* ")" ;
+ImplTarget ::= ImplTypeTarget
+             | ImplInterfaceTarget
 
-<whenElseCondition> ::= "else" <whenSubCondition>? ;
+ImplTypeTarget ::= Type
 
-<whenSubCondition> ::= "if" "(" <expr> ")" ;
+ImplInterfaceTarget ::= Type "for" Type
 
-<throwStmt> ::= "throw" <expr> ;
+ImplBody ::= "{" ImplItem* "}"
 
-<tryStmt> ::= "try" <blockOrExpr> <catchStmt>* <finallyStmt>? ;
+ImplItem ::= FnDecl
+           | TypeAliasDecl
 
-<catchStmt> ::= "catch" <fnParamList>? <blockOrFlowStmt> ;
+// ------ Statements ------
 
-<catchPostfixStmt> ::= "catch" <fnParamList>? <blockOrFlowStmt> ;
+Block ::= "{" Stmt* "}"
 
-<finallyStmt> ::= "finally" <blockOrFlowStmt> ;
+Stmt ::= VarDecl
+       | ImportDecl
+       | DeferStmt
+       | ExprLikeStmt
 
-<selectStmt> ::= "select" "{" <selectCase>* "}" ;
+ExprLikeStmt ::= "return" Expr?
+               | "break"
+               | "continue"
+               | ForStmt
+               | WhileStmt
+               | LoopStmt
+               | Expr
 
-<selectCase> ::= <selectExprCase>
-               | <selectElseCase>
-               ;
+BlockOrExpr ::= Block | ExprLikeStmt
 
-<selectExprCase> ::= <expr> "->" (<lambda> | <flowExpr>) ;
+// ------ Defer Statement ------
 
-<selectElseCase> ::= "else" "->" (<lambda> | <flowExpr>) ;
+DeferStmt ::= "defer" BlockOrExpr
 
-<deferStmt> ::= "defer" <blockOrFlowStmt> ;
+// ------ For Statement ------
 
-<blockOrFlowStmt> ::= <block>
-                    | <flowStmt>
-                    ;
+ForStmt ::= "for" VarDeclTarget "in" Expr BlockOrExpr
 
-<blockOrExpr> ::= <block>
-                | <expr>
-                ;
+// ------ While Statement ------
 
-// operator and expression precedence not modeled in grammar yet
-<expr> ::= <prefixOp> <expr>
-         | <expr> <infixOp> <expr>
-         | <expr> <postfixOp>
-         | <expr> <postfixStmtExpr>
-         | <expr> <postfixLooseExpr>
-         | <expr> <callExpr>
-         | <expr> <indexExpr>
-         | <expr> <memberExpr>
-         | <literal>
-         ;
+WhileStmt ::= "while" ConditionTarget BlockOrExpr
 
-<postfixStmtExpr> ::= <ifPostfixStmt>
-                    | <catchPostfixStmt>
-                    | <forPostfixStmt>
-                    ;
+// ------ If Statement ------
 
-<callExpr> ::= <expr> ("(" (<expr> ("," <expr>)*)? ")")? <lambda>? ;
+IfStmt ::= "if" ConditionTarget BlockOrExpr IfElseCase?
 
-<indexExpr> ::= <expr> "[" <expr> ("," <expr>)* "]" ;
+IfElseCase ::= "else" BlockOrExpr
 
-<literal> ::= <parenExpr>
-            | <integer>
-            | <float>
-            | <string>
-            | <fstring>
-            | "true" | "false"
-            | "null"
-            | <id>
-            | <lambda>
-            | <tuple>
-            | <list>
-            | <map>
-            | <ifStmt>
-            | <whenStmt>
-            | <tryStmt>
-            | <selectStmt>
-            ;
+// ------ Loop Statement ------
 
-<parenExpr> ::= "(" <expr> ")" ;
+LoopStmt ::= "loop" BlockOrExpr
 
-<fstring> ::= <fstringStart> (<expr> | <fstringPart>)* <fstringEnd> ;
+// ------ Match Statement ------
 
-<lambda> ::= <lambdaExprForm>
-           | <lambdaBlockForm>
-           ;
+MatchStmt ::= "match" Expr? MatchBody
 
-<lambdaExprForm> ::= <lambdaParamDecl> <expr>
+MatchBody ::= "{" MatchArm* "}"
 
-<lambdaBlockForm> ::= "{" <lambdaParamDecl>? stmt* "}"
+MatchArm ::= MatchPattern MatchPatternCondition? "=>" BlockOrExpr
 
-<lambdaParamDecl> ::= "|" <fnParam> ("," <fnParam>)* "|" ;
+MatchPattern ::= MatchPatternTuple
+               | MatchPatternExpr
+               | MatchPatternIs
+               | MatchPatternIn
+               | MatchPatternElse
 
-<tuple> ::= "(" <expr> "," ")"
-          | "(" <expr> ("," <expr>)* ")"
-          ;
+MatchPatternTuple ::= TupleLiteral
 
-<list> ::= "[" <expr> ("," <expr>)* "]" ;
+MatchPatternExpr ::= Expr
 
-<map> ::= "." "{" <mapPart> ("," <mapPart>)* "}" ;
+MatchPatternIs ::= "is" Type UnpackTarget?
 
-<mapPart> ::= <mapPartKey> ":" <expr> ;
+MatchPatternIn ::= "in" Expr
 
-<mapPartKey> ::= <string>
-               | <fstring>
-               ;
+MatchPatternElse ::= "else"
 
-<typeAnnotation> ::= ":" <typeExpr> ;
+MatchPatternCondition ::= "if" Expr
 
-<typeExpr> ::= "::"? <typeExprPart> ("::" <typeExprPart>)* "?"? ;
+// ------ Select Statement ------
 
-<typeExprPart> ::= <id> <typeExprGenericPart>? ;
+SelectStmt ::= "select" SelectBody
 
-<typeExprGenericPart> ::= "<" <typeExpr> ("," <typeExpr>)* ">" ;
+SelectBody ::= "{" SelectArm* "}"
 
-// Terminals / tokens (placeholders)
-<id> ::= /* identifier token */ ;
-<integer> ::= /* integer token */ ;
-<float> ::= /* float token */ ;
-<string> ::= /* string token */ ;
-<fstringStart> ::= /* fstring start token */ ;
-<fstringPart> ::= /* fstring part token */ ;
-<fstringEnd> ::= /* fstring end token */ ;
+SelectArm ::= SelectWhenArm
+            | SelectElseArm
 
-// Operator placeholders (to be defined elsewhere or by lexer)
-<prefixOp> ::= /* prefix operator token */ ;
-<infixOp> ::= /* infix operator token */ ;
-<postfixOp> ::= /* postfix operator token */ ;
-<postfixLooseExpr> ::= /* loose postfix (e.g., optional chaining) */ ;
-<memberExpr> ::= /* member access (dot/?. handled in parser) */ ;
-<flowExpr> ::= /* flow expression placeholder used in select cases */ ;
+SelectWhenArm ::= "when" Expr SelectArmResultHandler
+
+SelectElseArm ::= "else" SelectArmResultHandler
+
+SelectArmResultHandler ::= "=>" BlockOrExpr
+
+// ------ Expressions ------
+
+Expr ::= Expr InfixOp Expr
+       | PrefixOp Expr
+       | Expr PostfixOp
+       | Expr PostfixExpr
+       | Expr ("as" | "as?") Type
+       | IfStmt
+       | MatchStmt
+       | SelectStmt
+       | Literal
+
+PostfixExpr ::= GenericArgumentList
+              | PostfixCallExpr
+              | PostfixIndexExpr
+              | PostfixMemberExpr
+
+PostfixCallExpr ::= CallArgumentList
+                  | CallArgumentList? LambdaLiteral
+
+CallArgumentList ::= "(" (CallArgument ("," CallArgument)*)? ")"
+
+CallArgument ::= Expr
+               | "." Id "=" Expr
+
+PostfixIndexExpr ::= "[" Expr ("," Expr)* "]"
+
+PostfixMemberExpr ::= "." Id
+
+// ------ Types ------
+
+Type ::= TypePathItem ("." TypePathItem)* "?"
+
+TypePathItem ::= Id GenericArgumentList
+
+GenericParamList ::= "<" GenericParamItem ("," GenericParamItem)* ">"
+
+GenericParamItem ::= Id (":" Type ("&" Type)*)?
+
+GenericArgumentList ::= "<" Type ("," Type)* ">"
+
+NameDecl ::= Id TypeAnnotation?
+
+TypeAnnotation ::= ":" Type
+
+// ------ Literals ------
+
+Literal ::= Id
+          | Number
+          | String
+          | FormatString
+          | "true" | "false"
+          | "null"
+          | LambdaLiteral
+          | "(" Expr ")"
+          | TupleLiteral
+          | ListLiteral
+          | MapLiteral
+          | Block
+
+Id ::= "identifier"
+
+Number ::= Integer | Float
+
+Integer ::= (HexInteger | DecimalInteger | OctalInteger | BinaryInteger) NumberSuffix?
+
+HexInteger ::= "0x" HexDigit+
+
+DecimalInteger ::= DecimalDigit+
+
+OctalInteger ::= "0o" OctalDigit+
+
+BinaryInteger ::= "0b" BinaryDigit+
+
+Float ::= DecimalDigit+ "." DecimalDigit+ NumberSuffix?
+
+NumberSuffix ::= Alpha AlphaNumeric*
+
+HexDigit ::= DecimalDigit
+           | "a" | "b" | "c" | "d" | "e" | "f"
+           | "A" | "B" | "C" | "D" | "E" | "F"
+
+DecimalDigit ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+
+OctalDigit ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7"
+
+BinaryDigit ::= "0" | "1"
+
+FormatString ::= (FormatStringPart Expr)+ String
+
+LambdaLiteral ::= "->" LambdaParameterDecl? BlockOrExpr
+
+LambdaParameterDecl ::= "|" LambdaParameterList? "|" TypeAnnotation?
+
+LambdaParameterList ::= NameDecl ("," NameDecl)*
+
+TupleLiteral ::= "(" ")"
+               | "(" Expr "," ")"
+               | "(" Expr ("," Expr)* ")"
+
+ListLiteral ::= "[" "]"
+
+MapLiteral ::= ".{" "}"
+
+// ------ Misc ------
+
+UnpackTarget ::= "(" (UnpackTargetItem ("," UnpackTargetItem)*)? ")"
+               | "{" (UnpackTargetItem ("," UnpackTargetItem)*)? "}"
+
+UnpackTargetItem ::= Id
+                   | Expr
+                   | "..."
+
+ConditionTarget ::= Expr
+                  | ("const" | "let") Type UnpackTarget? "=" Expr
+
+Attribute ::= "#" "[" AttributeArguments? "]"
+
+AttributeArguments ::= AttributeItem ("," AttributeItem)*
+
+AttributeItem ::= AttributeKey
+                | AttributeKey "=" AttributeValue?
+                | AttributeKey "(" AttributeArguments? ")"
+
+AttributeKey ::= Id
+
+AttributeValue ::= String
+                 | Integer
+                 | Float
+                 | Boolean
