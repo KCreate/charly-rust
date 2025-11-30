@@ -69,7 +69,7 @@ pub struct DiagnosticController {
 }
 
 pub struct DiagnosticContext {
-    file_id: FileId,
+    pub file_id: FileId,
     pub messages: Vec<DiagnosticMessage>,
 }
 
@@ -229,6 +229,15 @@ impl DiagnosticController {
             None => None,
         }
     }
+
+    pub fn has_errors(&self) -> bool {
+        for context in self.contexts.iter() {
+            if context.has_errors() {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 impl DiagnosticContext {
@@ -261,11 +270,6 @@ impl DiagnosticContext {
                 location: location.clone(),
             });
         }
-
-        println!(
-            "added message ({}) starting at {} ending at {}",
-            title, location.span.start, location.span.end
-        );
 
         self.add_message(DiagnosticMessage {
             severity,
@@ -304,5 +308,14 @@ impl DiagnosticContext {
         notes: Vec<&str>,
     ) {
         self.compose_impl(DiagnosticSeverity::Advice, title, location, labels, notes);
+    }
+
+    pub fn has_errors(&self) -> bool {
+        for message in self.messages.iter() {
+            if let DiagnosticSeverity::Error = message.severity {
+                return true;
+            }
+        }
+        false
     }
 }

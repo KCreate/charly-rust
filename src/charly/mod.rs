@@ -24,7 +24,8 @@ mod compiler;
 mod test_utils;
 mod utils;
 
-use crate::charly::compiler::token::{Token, TokenKind};
+use crate::charly::compiler::cst_parser::CSTParser;
+use crate::charly::compiler::token::TokenKind;
 use crate::charly::compiler::tokenizer::Tokenizer;
 use crate::charly::utils::ascii_tree::AsciiTree;
 use crate::charly::utils::diagnostics::DiagnosticController;
@@ -35,88 +36,131 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 pub fn run(cli: Args) -> ExitCode {
-    use std::path::PathBuf;
     use std::process::ExitCode;
 
     match cli.command {
-        Commands::Run {
-            filename,
-            debug_args,
-        } => {
-            let path = PathBuf::try_from(&filename).unwrap();
-            let content = std::fs::read_to_string(&path).unwrap();
-            compile(&debug_args, &path, &content);
+        Some(Commands::Debug) => {
+            command_debug();
+            ExitCode::SUCCESS
         }
-
-        Commands::Repl { debug_args } => {
-            let path = PathBuf::try_from("repl").unwrap();
-            let mut rl = DefaultEditor::new().unwrap();
-            loop {
-                match rl.readline("> ") {
-                    Ok(line) => match line.trim() {
-                        ".exit" => break,
-                        ".clear" => {
-                            rl.clear_history().expect("Failed to clear history");
-                            continue;
-                        }
-                        ".help" => {
-                            println!("Help:");
-                            println!("  .exit       Exit the REPL");
-                            println!("  .clear      Clear REPL history");
-                            println!("  .help       Show this message");
-                        }
-                        _ => {
-                            compile(&debug_args, &path, &line);
-                            rl.add_history_entry(&line).unwrap();
-                        }
-                    },
-                    Err(ReadlineError::Interrupted) => {
-                        break;
-                    }
-                    Err(ReadlineError::Eof) => continue,
-                    Err(err) => {
-                        println!("Error: {:?}", err);
-                        break;
-                    }
-                }
+        None => match cli.filename {
+            Some(filename) => command_run(filename, cli.debug_args),
+            None => {
+                command_repl(cli.debug_args);
+                ExitCode::SUCCESS
             }
-        }
-
-        Commands::Debug {} => {
-            let mut root = AsciiTree::new("root");
-
-            {
-                let foo = root.node("foo");
-                foo.node("1");
-                foo.node("2");
-                foo.node("3");
-            }
-
-            root.node("bar");
-
-            {
-                let baz = root.node("baz");
-                baz.node("1");
-                baz.node("2");
-                baz.node("3");
-            }
-
-            let format = root.format();
-
-            println!("{}", format);
-        }
+        },
     }
-
-    ExitCode::SUCCESS
 }
 
-fn compile(debug_args: &DebugArgs, path: &PathBuf, content: &str) {
+fn command_run(filename: String, debug_args: DebugArgs) -> ExitCode {
+    let Some(path) = PathBuf::try_from(&filename).ok() else {
+        eprintln!("Error: Invalid filename '{}'", filename);
+        return ExitCode::FAILURE;
+    };
+
+    let Some(content) = std::fs::read_to_string(&path).ok() else {
+        eprintln!("Error: Could not read file '{}'", filename);
+        return ExitCode::FAILURE;
+    };
+
+    compile(&debug_args, &path, &content)
+}
+
+fn command_repl(debug_args: DebugArgs) {
+    let mut debug_args = debug_args;
+
+    let path = PathBuf::try_from("repl").unwrap();
+    let mut rl = DefaultEditor::new().unwrap();
+    loop {
+        match rl.readline("> ") {
+            Ok(line) => match line.trim() {
+                ".exit" => break,
+
+                ".help" => {
+                    println!("Help:");
+                    println!("  .exit           Exit the REPL");
+                    println!("  .clear          Clear REPL history");
+                    println!("  .help           Show this message");
+                    println!("  .dump-tokens    Toggle token dumping");
+                    println!("  .dump-cst       Toggle CST dumping");
+                }
+
+                ".clear" => {
+                    rl.clear_history().expect("Failed to clear history");
+                }
+
+                ".dump-tokens" => {
+                    debug_args.dump_tokens = !debug_args.dump_tokens;
+                    println!(
+                        "Dump tokens: {}",
+                        if debug_args.dump_tokens {
+                            "enabled"
+                        } else {
+                            "disabled"
+                        }
+                    );
+                }
+
+                ".dump-cst" => {
+                    debug_args.dump_cst = !debug_args.dump_cst;
+                    println!(
+                        "Dump CST: {}",
+                        if debug_args.dump_cst {
+                            "enabled"
+                        } else {
+                            "disabled"
+                        }
+                    );
+                }
+
+                _ => {
+                    compile(&debug_args, &path, &line);
+                    rl.add_history_entry(&line).unwrap();
+                }
+            },
+            Err(ReadlineError::Interrupted) => {
+                break;
+            }
+            Err(ReadlineError::Eof) => continue,
+            Err(err) => {
+                println!("Error: {:?}", err);
+                break;
+            }
+        }
+    }
+}
+
+fn command_debug() {
+    let mut root = AsciiTree::new("root");
+
+    {
+        let foo = root.node("foo");
+        foo.node("1");
+        foo.node("2");
+        foo.node("3");
+    }
+
+    root.node("bar");
+
+    {
+        let baz = root.node("baz");
+        baz.node("1");
+        baz.node("2");
+        baz.node("3");
+    }
+
+    let format = root.format();
+
+    println!("{}", format);
+}
+
+fn compile(debug_args: &DebugArgs, path: &PathBuf, content: &str) -> ExitCode {
     let mut controller = DiagnosticController::new();
     let file_id = controller.register_file(&path, content);
     let context = controller.get_or_create_context(file_id);
 
-    let tokenizer = Tokenizer::new(content, file_id, context);
-    let tokens: Vec<Token> = tokenizer.collect();
+    let tokens = Tokenizer::tokenize(content, context);
 
     if debug_args.dump_source {
         println!("{}", content);
@@ -136,12 +180,17 @@ fn compile(debug_args: &DebugArgs, path: &PathBuf, content: &str) {
         }
     }
 
-    // let mut parser = CSTParser::new(&tokens, context);
-    // let tree = parser.parse();
-    //
-    // if debug_args.dump_cst {
-    //     println!("{}", tree);
-    // }
+    let mut parser = CSTParser::new(&tokens, context);
+    let tree = parser.parse();
+
+    if debug_args.dump_cst {
+        println!("{}", tree);
+    }
 
     controller.print_diagnostics();
+
+    match controller.has_errors() {
+        true => ExitCode::FAILURE,
+        false => ExitCode::SUCCESS,
+    }
 }

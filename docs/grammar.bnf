@@ -276,7 +276,6 @@ TypeAnnotation ::= ":" Type
 Literal ::= Id
           | Number
           | String
-          | FormatString
           | "true" | "false"
           | "null"
           | LambdaLiteral
@@ -287,6 +286,7 @@ Literal ::= Id
           | Block
 
 Id ::= "identifier"
+     | "@" String
 
 Number ::= Integer | Float
 
@@ -314,7 +314,16 @@ OctalDigit ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7"
 
 BinaryDigit ::= "0" | "1"
 
-FormatString ::= (FormatStringPart Expr)+ String
+String ::= StringStart StringPart* StringEnd
+
+StringStart ::= '"'
+
+StringEnd ::= '"'
+
+StringPart ::= StringText
+             | StringInterpolation
+
+StringInterpolation ::= "{" Expr "}"
 
 LambdaLiteral ::= "->" LambdaParameterDecl? BlockOrExpr
 
@@ -342,7 +351,7 @@ UnpackTargetItem ::= Id
 ConditionTarget ::= Expr
                   | ("const" | "let") Type UnpackTarget? "=" Expr
 
-Attribute ::= "#" "[" AttributeArguments? "]"
+Attribute ::= "@" "[" AttributeArguments? "]"
 
 AttributeArguments ::= AttributeItem ("," AttributeItem)*
 

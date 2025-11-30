@@ -47,6 +47,16 @@ pub struct TextSpan {
     pub end: TextPosition,
 }
 
+impl TextSpan {
+    pub fn byte_length(&self) -> usize {
+        self.end.byte_offset - self.start.byte_offset
+    }
+
+    pub fn codepoint_length(&self) -> usize {
+        self.end.codepoint_offset - self.start.codepoint_offset
+    }
+}
+
 impl Display for TextPosition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "<{}:{}>", self.line, self.column)
@@ -103,16 +113,33 @@ impl<'a> WindowBuffer<'a> {
         }
     }
 
-    pub fn advance(&mut self, length: usize) {
-        for _ in 0..length {
-            self.read_char();
+    pub fn advance(&mut self) {
+        self.advance_multiple(1);
+    }
+
+    pub fn advance_multiple(&mut self, codepoint_count: usize) {
+        for _ in 0..codepoint_count {
+            self.read_char().expect("expected a character");
         }
     }
 
     pub fn eat_char(&mut self, char: char) -> bool {
         if self.peek_char() == Some(char) {
-            self.advance(1);
+            self.advance();
             true
+        } else {
+            false
+        }
+    }
+
+    pub fn eat_str(&mut self, expected: &str) -> bool {
+        if let Some(actual) = self.peek_str_with_length(expected.len()) {
+            if actual == expected {
+                self.advance_multiple(expected.len());
+                true
+            } else {
+                false
+            }
         } else {
             false
         }
@@ -137,7 +164,7 @@ impl<'a> WindowBuffer<'a> {
         peek_char
     }
 
-    pub fn peek_str(&self, length: usize) -> Option<&str> {
+    pub fn peek_str_with_length(&self, length: usize) -> Option<&str> {
         let rest_start = self.window_span.end.byte_offset;
         let rest_end = self.buffer.len();
         let rest_slice = &self.buffer[rest_start..rest_end];
@@ -185,5 +212,9 @@ impl<'a> WindowBuffer<'a> {
 
     pub fn cursor_position(&self) -> TextPosition {
         self.window_span.end.clone()
+    }
+
+    pub fn eof(&self) -> bool {
+        self.peek_char().is_none()
     }
 }

@@ -29,9 +29,16 @@ mod charly;
 use charly::run;
 
 #[derive(Parser, Debug)]
+#[command(version)]
 pub struct Args {
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
+
+    #[arg(required = false)]
+    filename: Option<String>,
+
+    #[clap(flatten)]
+    debug_args: DebugArgs,
     // TODO: implement license printing
     // #[arg(long, global = true, help = "Show license")]
     // license: bool,
@@ -78,26 +85,10 @@ struct DebugArgs {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    #[clap(about = "Run a program")]
-    Run {
-        #[arg(required = true)]
-        filename: String,
-
-        #[clap(flatten)]
-        debug_args: DebugArgs,
-    },
-
-    #[clap(about = "Run the REPL")]
-    Repl {
-        #[clap(flatten)]
-        debug_args: DebugArgs,
-    },
-
     #[clap(about = "Run the code in the main debug section")]
-    Debug {},
+    Debug,
 }
 
 fn main() -> ExitCode {
-    let args = Args::parse();
-    run(args)
+    run(Args::parse())
 }

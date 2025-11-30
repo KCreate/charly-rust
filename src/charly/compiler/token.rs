@@ -39,6 +39,7 @@ pub enum TokenValue {
     IntegerValue(String, IntegerBaseSpecifier, Option<NumberSuffix>),
     FloatValue(String, Option<NumberSuffix>),
     TextValue(String),
+    CharacterValue(char),
 }
 
 #[derive(Debug, Clone)]
@@ -147,8 +148,12 @@ define_tokens! {
         Identifier,
         Integer,
         Float,
-        String,
-        FormatStringPart,
+        Character,
+        StringStart,
+        StringEnd,
+        StringText,
+        StringExprStart,
+        StringExprEnd,
     },
     keywords: {
         As,
@@ -245,7 +250,6 @@ define_tokens! {
         Semicolon => ";",
         Comma => ",",
         AtSign => "@",
-        DashSign => "#",
         LeftArrow => "<-",
         RightArrow => "->",
         RightThickArrow => "=>",
@@ -376,6 +380,23 @@ impl TokenKind {
             _ => None,
         }
     }
+
+    pub fn is_whitespace(&self) -> bool {
+        match self {
+            TokenKind::Whitespace => true,
+            TokenKind::Newline => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_comment(&self) -> bool {
+        match self {
+            TokenKind::SingleLineComment => true,
+            TokenKind::MultiLineComment => true,
+            TokenKind::DocComment => true,
+            _ => false,
+        }
+    }
 }
 
 impl Display for TokenValue {
@@ -383,24 +404,36 @@ impl Display for TokenValue {
         use TokenValue::*;
 
         match self {
-            IntegerValue(value, base, suffix) => {
-                write!(
-                    f,
-                    "{} base {} in {}",
-                    value,
-                    base.radix(),
-                    suffix.clone().unwrap_or("_".to_string())
-                )
+            IntegerValue(value, base, suffix) => match suffix {
+                Some(suffix) => {
+                    write!(f, "{} base {} in {}", value, base.radix(), suffix,)
+                }
+                None => write!(f, "{} base {}", value, base.radix(),),
+            },
+            FloatValue(value, suffix) => match suffix {
+                Some(suffix) => {
+                    write!(f, "{} in {}", value, suffix,)
+                }
+                None => write!(f, "{}", value),
+            },
+            TextValue(value) => {
+                let formatted = format!("{:?}", value);
+                let sliced = formatted
+                    .chars()
+                    .skip(1)
+                    .take(formatted.chars().count() - 2)
+                    .collect::<String>();
+                write!(f, "{}", sliced)
             }
-            FloatValue(value, suffix) => {
-                write!(
-                    f,
-                    "{} in {}",
-                    value,
-                    suffix.clone().unwrap_or("_".to_string())
-                )
+            CharacterValue(char) => {
+                let formatted = format!("{:?}", char);
+                let sliced = formatted
+                    .chars()
+                    .skip(1)
+                    .take(formatted.chars().count() - 2)
+                    .collect::<String>();
+                write!(f, "{}", sliced)
             }
-            TextValue(value) => write!(f, "{}", value),
         }
     }
 }

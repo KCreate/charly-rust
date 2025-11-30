@@ -230,4 +230,21 @@ import kcreate.utils.csv.*
 import kcreate.utils.json.*
 import kcreate.utils.json.*
 
+
+
+
+"hello world"
+StringStart                     "
+StringTextPart                  hello world
+StringEnd                       "
+
+"hello { if foo {} }!"
+StringStart                     "
+StringTextPart                  hello
+StringExprStart                 {
+Identifier                      name
+StringExprEnd                   }
+StringTextPart                  !
+StringEnd                       "
+
 // end of file
