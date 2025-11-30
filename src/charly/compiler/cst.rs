@@ -30,7 +30,8 @@ use std::fmt::{Display, Formatter};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CSTTreeKind {
     Error,
-    File,
+    Program,
+    TopLevelItem,
 }
 
 pub struct CSTTree {

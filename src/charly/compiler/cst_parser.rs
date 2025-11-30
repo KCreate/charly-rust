@@ -22,10 +22,12 @@
 
 use crate::charly::compiler::cst::{CSTNode, CSTTree, CSTTreeKind};
 use crate::charly::compiler::token::{Token, TokenKind};
+use crate::charly::compiler::tokenset::TokenSet;
 use crate::charly::utils::diagnostics::DiagnosticContext;
+use crate::charly::utils::fuel_store::FuelStore;
 
 enum Event {
-    Open { kind: CSTTreeKind },
+    Open(CSTTreeKind),
     Close,
     Advance,
 }
@@ -44,7 +46,7 @@ pub struct CSTParser<'a> {
     tokens: &'a Vec<Token>,
     diagnostic_context: &'a mut DiagnosticContext,
     pos: usize,
-    fuel: u32,
+    fuel: FuelStore,
     events: Vec<Event>,
 }
 
@@ -57,46 +59,132 @@ impl<'a> CSTParser<'a> {
             tokens,
             diagnostic_context,
             pos: 0,
-            fuel: 256,
+            fuel: FuelStore::new("CSTParser", 256),
             events: Vec::new(),
         }
     }
 
     pub fn parse(&mut self) -> CSTTree {
-        // self.parse_file();
+        self.skip_whitespace_and_comments();
+        self.parse_program();
         self.build_tree()
+    }
+
+    /// ```bnf
+    /// Program ::= TopLevelItem*
+    /// ```
+    pub fn parse_program(&mut self) {
+        self.with(CSTTreeKind::Program, |this| {
+            while !this.eof() {
+                this.parse_top_level_item();
+            }
+        });
+    }
+
+    /// ```bnf
+    /// TopLevelItem ::= ImportDecl
+    ///                | FnDecl
+    ///                | VarDecl
+    ///                | TypeAliasDecl
+    ///                | StructDecl
+    ///                | InterfaceDecl
+    ///                | UnionDecl
+    ///                | EnumDecl
+    ///                | ImplDecl
+    ///                | Stmt
+    /// ```
+    pub fn parse_top_level_item(&mut self) {
+        self.with(CSTTreeKind::TopLevelItem, |this| {
+            match this.current() {
+                _ => {
+                    this.advance();
+                }
+            };
+        });
+    }
+
+    /// Convenience method to easily open and close a CST node
+    ///
+    /// Usage:
+    /// ```rust
+    /// self.with(CSTTreeKind::TopLevelItem, |this| { ... });
+    /// ```
+    fn with<F>(&mut self, kind: CSTTreeKind, callback: F) -> MarkClosed
+    where
+        F: FnOnce(&mut Self),
+    {
+        let mark = self.open();
+        callback(self);
+        self.close(mark, kind)
+    }
+
+    /// Convenience method to easily open and close a CST node
+    /// Opens the new node before another node
+    ///
+    /// Usage:
+    /// ```rust
+    /// self.with_before(CSTTreeKind::TopLevelItem, before, |this| { ... });
+    /// ```
+    fn with_before<F>(
+        &mut self,
+        kind: CSTTreeKind,
+        before: &MarkClosed,
+        callback: F,
+    ) -> MarkClosed
+    where
+        F: FnOnce(&mut Self),
+    {
+        let mark = self.open_before(before);
+        callback(self);
+        self.close(mark, kind)
     }
 
     fn open(&mut self) -> MarkOpened {
         let mark = MarkOpened {
             index: self.events.len(),
         };
-        self.events.push(Event::Open {
-            kind: CSTTreeKind::Error,
-        });
+        self.events.push(Event::Open(CSTTreeKind::Error));
         mark
     }
 
     fn open_before(&mut self, mark: &MarkClosed) -> MarkOpened {
         let mark = MarkOpened { index: mark.index };
-        let event = Event::Open {
-            kind: CSTTreeKind::Error,
-        };
+        let event = Event::Open(CSTTreeKind::Error);
         self.events.insert(mark.index, event);
         mark
     }
 
     fn close(&mut self, mark: MarkOpened, kind: CSTTreeKind) -> MarkClosed {
-        self.events[mark.index] = Event::Open { kind };
+        self.events[mark.index] = Event::Open(kind);
         self.events.push(Event::Close);
         MarkClosed { index: mark.index }
     }
 
     fn advance(&mut self) {
+        let current_pos = self.pos;
+        self.skip_whitespace_and_comments();
+
+        // move at least one token if no whitespace or comments were encountered
+        if self.pos == current_pos {
+            self.advance_to_next_token();
+        }
+    }
+
+    fn advance_to_next_token(&mut self) {
         assert!(!self.eof());
-        self.fuel = 256;
+        self.fuel.replenish();
         self.events.push(Event::Advance);
         self.pos += 1;
+    }
+
+    fn skip_whitespace_and_comments(&mut self) {
+        while let Some(kind) = self.current() {
+            if kind.is_comment() || kind.is_whitespace() {
+                self.advance_to_next_token();
+            } else {
+                break;
+            }
+        }
     }
 
     fn eof(&mut self) -> bool {
@@ -105,6 +193,14 @@ impl<'a> CSTParser<'a> {
 
     fn at(&mut self, kind: TokenKind) -> bool {
         self.current() == Some(kind)
+    }
+
+    fn at_any(&mut self, set: &TokenSet) -> bool {
+        let Some(kind) = self.current() else {
+            return false;
+        };
+
+        set.has(kind)
     }
 
     fn eat(&mut self, kind: TokenKind) -> bool {
@@ -116,25 +212,36 @@ impl<'a> CSTParser<'a> {
         }
     }
 
+    fn expect(&mut self, kind: TokenKind, anchor_set: &TokenSet) {
+        if self.eat(kind) {
+            return;
+        }
+
+        let anchor_set = TokenSet::from_kinds_and_sets(&[kind], &[anchor_set]);
+        self.recover_until(&anchor_set);
+
+        self.eat(kind);
+    }
+
+    fn recover_until(&mut self, anchor_set: &TokenSet) {
+        if self.at_any(anchor_set) {
+            return;
+        }
+
+        self.with(CSTTreeKind::Error, |this| {
+            while !this.eof() && !this.at_any(anchor_set) {
+                this.advance();
+            }
+        });
+    }
+
     fn current(&mut self) -> Option<TokenKind> {
-        self.nth(0)
+        self.fuel.consume();
+        self.current_token().map_or(None, |token| Some(token.kind))
     }
 
     fn current_token(&self) -> Option<&Token> {
-        self.nth_token(0)
-    }
-
-    fn nth(&mut self, lookahead: usize) -> Option<TokenKind> {
-        if self.fuel == 0 {
-            panic!("parser ran out of fuel");
-        }
-        self.fuel = self.fuel - 1;
-        self.nth_token(lookahead)
-            .map_or(None, |token| Some(token.kind))
-    }
-
-    fn nth_token(&self, lookahead: usize) -> Option<&Token> {
-        self.tokens.get(self.pos + lookahead)
+        self.tokens.get(self.pos)
     }
 
     // /// ```bnf
@@ -683,7 +790,7 @@ impl<'a> CSTParser<'a> {
         for event in events {
             match event {
                 // starting a new node, push an empty tree to the stack
-                Event::Open { kind } => {
+                Event::Open(kind) => {
                     let tree = CSTTree {
                         kind: *kind,
                         children: Vec::new(),
@@ -735,8 +842,7 @@ mod tests {
         let file_id = controller.register_file(&path, source);
         let mut context = controller.get_or_create_context(file_id);
 
-        let mut tokenizer = Tokenizer::new(source, file_id, &mut context);
-        let tokens = tokenizer.collect();
+        let tokens = Tokenizer::tokenize(source, &mut context);
 
         let mut parser = CSTParser::new(&tokens, &mut context);
         let tree = parser.parse();
