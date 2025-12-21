@@ -92,6 +92,12 @@ macro_rules! define_tokens {
             __COUNT
         }
 
+        pub static TOKEN_ALL: &[TokenKind] = &[
+            $( TokenKind::$bare_variant, )*
+            $( TokenKind::$kw_variant, )*
+            $( TokenKind::$punct_variant, )*
+        ];
+
         pub static TOKEN_KEYWORDS: &[TokenKind] = &[
             $( TokenKind::$kw_variant, )*
         ];
@@ -133,12 +139,40 @@ macro_rules! define_tokens {
                     TokenKind::__COUNT => unreachable!()
                 }
             }
+
+            pub fn is_bare(&self) -> bool {
+                match self {
+                    $(
+                        TokenKind::$bare_variant => true,
+                    )*
+                    _ => false,
+                }
+            }
+
+            pub fn is_keyword(&self) -> bool {
+                match self {
+                    $(
+                        TokenKind::$kw_variant => true,
+                    )*
+                    _ => false,
+                }
+            }
+
+            pub fn is_punctuator(&self) -> bool {
+                match self {
+                    $(
+                        TokenKind::$punct_variant => true,
+                    )*
+                    _ => false,
+                }
+            }
         }
     }
 }
 
 define_tokens! {
     bare: {
+        EndOfFile,
         Error,
         Whitespace,
         Newline,
@@ -256,7 +290,7 @@ define_tokens! {
         QuestionMark => "?",
         QuestionMarkDot => "?.",
         QuestionMarkColon => "?:",
-        RangeLessThan => "..<",
+        RangeInclusive => "..=",
     },
 }
 
@@ -287,7 +321,7 @@ impl TokenKind {
             TokenKind::Is => true,
             TokenKind::In => true,
             TokenKind::QuestionMarkColon => true,
-            TokenKind::RangeLessThan => true,
+            TokenKind::RangeInclusive => true,
             TokenKind::DoubleDot => true,
             _ => false,
         }
@@ -435,6 +469,12 @@ impl Display for TokenValue {
                 write!(f, "{}", sliced)
             }
         }
+    }
+}
+
+impl Display for TokenKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_string())
     }
 }
 

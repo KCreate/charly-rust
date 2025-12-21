@@ -30,8 +30,8 @@ use crate::charly::compiler::tokenizer::Tokenizer;
 use crate::charly::utils::ascii_tree::AsciiTree;
 use crate::charly::utils::diagnostics::DiagnosticController;
 use crate::{Args, Commands, DebugArgs};
-use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
+use rustyline::DefaultEditor;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -84,6 +84,7 @@ fn command_repl(debug_args: DebugArgs) {
                     println!("  .help           Show this message");
                     println!("  .dump-tokens    Toggle token dumping");
                     println!("  .dump-cst       Toggle CST dumping");
+                    println!("  .dump-source    Toggle source dumping");
                 }
 
                 ".clear" => {
@@ -92,6 +93,7 @@ fn command_repl(debug_args: DebugArgs) {
 
                 ".dump-tokens" => {
                     debug_args.dump_tokens = !debug_args.dump_tokens;
+                    rl.add_history_entry(&line).unwrap();
                     println!(
                         "Dump tokens: {}",
                         if debug_args.dump_tokens {
@@ -104,9 +106,23 @@ fn command_repl(debug_args: DebugArgs) {
 
                 ".dump-cst" => {
                     debug_args.dump_cst = !debug_args.dump_cst;
+                    rl.add_history_entry(&line).unwrap();
                     println!(
                         "Dump CST: {}",
                         if debug_args.dump_cst {
+                            "enabled"
+                        } else {
+                            "disabled"
+                        }
+                    );
+                }
+
+                ".dump-source" => {
+                    debug_args.dump_source = !debug_args.dump_source;
+                    rl.add_history_entry(&line).unwrap();
+                    println!(
+                        "Dump source: {}",
+                        if debug_args.dump_source {
                             "enabled"
                         } else {
                             "disabled"

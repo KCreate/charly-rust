@@ -30,6 +30,7 @@ enum Event {
     Open(CSTTreeKind),
     Close,
     Advance,
+    Skip,
 }
 
 struct MarkOpened {
@@ -40,14 +41,21 @@ struct MarkClosed {
     index: usize,
 }
 
+enum SequenceControlFlow {
+    Continue,
+    Break,
+}
+
 /// Implements a Kladov-style parsing algorithm.
 /// Reference: https://matklad.github.io/2023/05/21/resilient-ll-parsing-tutorial.html
 pub struct CSTParser<'a> {
     tokens: &'a Vec<Token>,
     diagnostic_context: &'a mut DiagnosticContext,
-    pos: usize,
     fuel: FuelStore,
     events: Vec<Event>,
+    pos: usize,
+    previous_pos: usize,
+    previous_pos_all: usize,
 }
 
 impl<'a> CSTParser<'a> {
@@ -58,9 +66,11 @@ impl<'a> CSTParser<'a> {
         Self {
             tokens,
             diagnostic_context,
-            pos: 0,
             fuel: FuelStore::new("CSTParser", 256),
             events: Vec::new(),
+            pos: 0,
+            previous_pos: 0,
+            previous_pos_all: 0,
         }
     }
 
@@ -73,14 +83,26 @@ impl<'a> CSTParser<'a> {
     /// ```bnf
     /// Program ::= TopLevelItem*
     /// ```
-    pub fn parse_program(&mut self) {
+    fn parse_program(&mut self) {
         self.with(CSTTreeKind::Program, |this| {
-            while !this.eof() {
-                this.parse_top_level_item();
-            }
+            this.expect_sequence(
+                "a top level item",
+                &Self::STARTERS_TOP_LEVEL_ITEM,
+                &TokenSet::from(TokenKind::EndOfFile),
+                &TokenSet::from(TokenKind::EndOfFile),
+                None,
+                false,
+                true,
+                false,
+                &Self::parse_top_level_item,
+            );
         });
     }
 
+    const STARTERS_TOP_LEVEL_ITEM: TokenSet = TokenSet::from_kinds_and_sets(
+        &[],
+        &[&Self::STARTERS_IMPORT_DECL, &Self::STARTERS_ATOM],
+    );
     /// ```bnf
     /// TopLevelItem ::= ImportDecl
     ///                | FnDecl
@@ -93,14 +115,326 @@ impl<'a> CSTParser<'a> {
     ///                | ImplDecl
     ///                | Stmt
     /// ```
-    pub fn parse_top_level_item(&mut self) {
+    fn parse_top_level_item(&mut self, recovery: &TokenSet) -> MarkClosed {
         self.with(CSTTreeKind::TopLevelItem, |this| {
             match this.current() {
-                _ => {
-                    this.advance();
-                }
+                TokenKind::Import => this.parse_import_decl(recovery),
+                _ => this.parse_atom(recovery),
             };
-        });
+        })
+    }
+
+    const STARTERS_IMPORT_DECL: TokenSet =
+        TokenSet::from_kinds_and_sets(&[TokenKind::Import], &[]);
+    /// ```bnf
+    /// ImportDecl ::= "import" ImportPath ImportAsItem?
+    /// ```
+    fn parse_import_decl(&mut self, recovery: &TokenSet) -> MarkClosed {
+        self.with(CSTTreeKind::ImportDecl, |this| {
+            this.expect(TokenKind::Import, &recovery.union(TokenKind::As));
+            this.parse_import_path(&recovery.union(TokenKind::As));
+            if this.advance_until(TokenKind::As, recovery) {
+                this.with(CSTTreeKind::ImportAsItem, |this| {
+                    this.expect(TokenKind::As, recovery);
+                    this.expect(TokenKind::Identifier, recovery);
+                });
+            }
+        })
+    }
+
+    const STARTERS_PATH_ENTRY: TokenSet =
+        TokenSet::from_kinds(&[TokenKind::Identifier, TokenKind::Mul]);
+    /// ```bnf
+    /// ImportPath ::= Id ("." Id)* ("." "*")?
+    /// ```
+    fn parse_import_path(&mut self, recovery: &TokenSet) -> MarkClosed {
+        self.with(CSTTreeKind::ImportPath, |this| {
+            this.expect_sequence(
+                "an identifier or '*'",
+                &Self::STARTERS_PATH_ENTRY,
+                recovery,
+                recovery,
+                Some(TokenKind::Dot),
+                true,
+                false,
+                true,
+                |this, recovery| {
+                    this.expect_any(
+                        "an identifier or '*'",
+                        &Self::STARTERS_PATH_ENTRY,
+                        recovery,
+                    );
+                },
+            );
+        })
+    }
+
+    /// ```bnf
+    /// AttributeList ::= Attribute*
+    /// ```
+    fn parse_attribute_list(
+        &mut self,
+        terminator_set: &TokenSet,
+        recovery: &TokenSet,
+    ) -> MarkClosed {
+        self.with(CSTTreeKind::AttributeList, |this| {
+            this.expect_sequence(
+                "an attribute",
+                &Self::STARTERS_ATTRIBUTE,
+                recovery,
+                terminator_set,
+                None,
+                false,
+                false,
+                false,
+                &Self::parse_attribute,
+            )
+        })
+    }
+
+    const STARTERS_ATTRIBUTE: TokenSet =
+        TokenSet::from_kinds_and_sets(&[TokenKind::AtSign], &[]);
+    /// ```bnf
+    /// Attribute ::= "@" Id ("(" AttributeArguments? ")")?
+    /// ```
+    fn parse_attribute(&mut self, recovery: &TokenSet) -> MarkClosed {
+        self.with(CSTTreeKind::Attribute, |this| {
+            this.expect(TokenKind::AtSign, recovery);
+            this.expect(TokenKind::Identifier, &recovery.union(TokenKind::LeftParen));
+
+            if this.at(TokenKind::LeftParen) {
+                this.parse_attribute_arguments(recovery);
+            }
+        })
+    }
+
+    /// ```bnf
+    /// AttributeArguments ::= AttributeItem ("," AttributeItem)*
+    /// ```
+    fn parse_attribute_arguments(&mut self, recovery: &TokenSet) -> MarkClosed {
+        self.with(CSTTreeKind::AttributeArguments, |this| {
+            this.expect_bracket_group(
+                CSTTreeKind::ParenGroup,
+                recovery,
+                |this, recovery| {
+                    this.expect_sequence(
+                        "an attribute argument",
+                        &Self::STARTERS_ATTRIBUTE_ITEM,
+                        recovery,
+                        &TokenSet::from(TokenKind::RightParen),
+                        Some(TokenKind::Comma),
+                        false,
+                        false,
+                        false,
+                        &Self::parse_attribute_item,
+                    );
+                },
+            );
+        })
+    }
+
+    const STARTERS_ATTRIBUTE_ITEM: TokenSet =
+        TokenSet::from_kinds_and_sets(&[], &[&Self::STARTERS_ATOM]);
+    fn parse_attribute_item(&mut self, recovery: &TokenSet) -> MarkClosed {
+        self.with(CSTTreeKind::AttributeItem, |this| {
+            this.parse_atom(recovery);
+        })
+    }
+
+    const STARTERS_ATOM: TokenSet = TokenSet::from_kinds_and_sets(
+        &[
+            TokenKind::Identifier,
+            TokenKind::Integer,
+            TokenKind::Float,
+            TokenKind::True,
+            TokenKind::False,
+            TokenKind::Null,
+            TokenKind::StringStart,
+        ],
+        &[],
+    );
+    fn parse_atom(&mut self, recovery: &TokenSet) -> MarkClosed {
+        match self.current() {
+            TokenKind::Identifier
+            | TokenKind::Integer
+            | TokenKind::Float
+            | TokenKind::True
+            | TokenKind::False
+            | TokenKind::Null => self.with(CSTTreeKind::Literal, |this| {
+                this.advance();
+            }),
+
+            TokenKind::StringStart => {
+                todo!("string parsing")
+            }
+
+            _ => self.with(CSTTreeKind::Error, |this| {
+                this.expect_any("an atom", &Self::STARTERS_ATOM, recovery);
+            }),
+        }
+    }
+
+    fn expect_bracket_group<F>(
+        &mut self,
+        open_kind: CSTTreeKind,
+        recovery: &TokenSet,
+        callback: F,
+    ) -> MarkClosed
+    where
+        F: FnOnce(&mut Self, &TokenSet),
+    {
+        let (open_token_kind, close_token_kind) = open_kind
+            .matching_bracket_token_kinds()
+            .expect("expected bracket kind");
+
+        self.with(open_kind, |this| {
+            let new_recovery = recovery.union(close_token_kind);
+            this.expect(open_token_kind, &new_recovery);
+            callback(this, &new_recovery);
+            this.expect(close_token_kind, recovery);
+        })
+    }
+
+    fn expect_sequence<F, R>(
+        &mut self,
+        expected_str: &str,
+        starter_set: &TokenSet,
+        recovery: &TokenSet,
+        terminator_set: &TokenSet,
+        separator_token: Option<TokenKind>,
+        break_on_missing_separator: bool,
+        allow_annotations: bool,
+        expect_at_least_one: bool,
+        callback: F,
+    ) where
+        F: Fn(&mut Self, &TokenSet) -> R,
+    {
+        self.expect_sequence_with_control_flow(
+            expected_str,
+            starter_set,
+            recovery,
+            terminator_set,
+            separator_token,
+            break_on_missing_separator,
+            allow_annotations,
+            expect_at_least_one,
+            |this, recovery| {
+                callback(this, recovery);
+                SequenceControlFlow::Continue
+            },
+        )
+    }
+
+    fn expect_sequence_with_control_flow<F>(
+        &mut self,
+        expected_str: &str,
+        starter_set: &TokenSet,
+        recovery: &TokenSet,
+        terminator_set: &TokenSet,
+        separator_token: Option<TokenKind>,
+        break_on_missing_separator: bool,
+        allow_annotations: bool,
+        expect_at_least_one: bool,
+        callback: F,
+    ) where
+        F: Fn(&mut Self, &TokenSet) -> SequenceControlFlow,
+    {
+        let mut effective_starter_set = starter_set.clone();
+        if allow_annotations {
+            effective_starter_set = effective_starter_set.union(TokenKind::AtSign);
+        }
+
+        let mut child_recovery = recovery.clone();
+        child_recovery = child_recovery.union_set(&effective_starter_set);
+        child_recovery = child_recovery.union_set(terminator_set);
+        if let Some(separator) = separator_token {
+            child_recovery = child_recovery.union(separator)
+        }
+
+        let effective_recovery_set = terminator_set
+            .union_set(recovery)
+            .without_set(&effective_starter_set);
+
+        let mut iteration_count = 0;
+
+        while !self.eof() {
+            if self.eof() || self.is_at_any(&effective_recovery_set) {
+                break;
+            }
+
+            if !self.is_at_any(&effective_starter_set) {
+                self.recover_until_any(
+                    expected_str,
+                    &effective_starter_set,
+                    &child_recovery,
+                );
+            }
+
+            if self.eof() || self.is_at_any(&effective_recovery_set) {
+                break;
+            }
+
+            let mut control_flow = SequenceControlFlow::Continue;
+            if self.is_at_any(&effective_starter_set) {
+                if allow_annotations {
+                    self.parse_annotated_node(
+                        starter_set,
+                        &child_recovery,
+                        |this, recovery| {
+                            control_flow = callback(this, recovery);
+                        },
+                    );
+                } else {
+                    control_flow = callback(self, &child_recovery);
+                }
+            }
+
+            iteration_count += 1;
+
+            if self.eof() || self.is_at_any(&effective_recovery_set) {
+                break;
+            }
+
+            if let Some(separator) = separator_token {
+                let consumed_separator = self.expect(separator, &child_recovery);
+                if break_on_missing_separator && !consumed_separator {
+                    break;
+                }
+            }
+
+            if let SequenceControlFlow::Break = control_flow {
+                break;
+            }
+        }
+
+        if iteration_count == 0 {
+            if expect_at_least_one {
+                self.diagnostic_context.error(
+                    format!("Expected at least one of '{}'", expected_str).as_str(),
+                    &self.current_token().location.clone(),
+                    vec![],
+                    vec![],
+                );
+            }
+        }
+    }
+
+    fn parse_annotated_node<F>(
+        &mut self,
+        starter_set: &TokenSet,
+        recovery: &TokenSet,
+        callback: F,
+    ) where
+        F: FnOnce(&mut Self, &TokenSet),
+    {
+        if self.at(TokenKind::AtSign) {
+            self.with(CSTTreeKind::NodeWithAttributes, |this| {
+                this.parse_attribute_list(starter_set, recovery);
+                callback(this, recovery);
+            });
+        } else {
+            callback(self, recovery);
+        }
     }
 
     /// Convenience method to easily open and close a CST node
@@ -160,47 +494,124 @@ impl<'a> CSTParser<'a> {
         MarkClosed { index: mark.index }
     }
 
-    fn advance(&mut self) {
-        let current_pos = self.pos;
+    fn advance(&mut self) -> TokenKind {
+        self.previous_pos = self.pos;
+        let kind = self.current();
+        self.event_token_advance();
         self.skip_whitespace_and_comments();
-
-        // move at least one token if no whitespace or comments were encountered
-        if self.pos == current_pos {
-            self.advance_to_next_token();
-        }
-    }
-
-    fn advance_to_next_token(&mut self) {
-        assert!(!self.eof());
-        self.fuel.replenish();
-        self.events.push(Event::Advance);
-        self.pos += 1;
+        kind
     }
 
     fn skip_whitespace_and_comments(&mut self) {
-        while let Some(kind) = self.current() {
-            if kind.is_comment() || kind.is_whitespace() {
-                self.advance_to_next_token();
-            } else {
-                break;
-            }
+        while self.current().is_comment() || self.current().is_whitespace() {
+            self.event_token_skip();
         }
     }
 
-    fn eof(&mut self) -> bool {
-        self.current().is_none()
+    fn recover_until(&mut self, kind: TokenKind, recovery: &TokenSet) {
+        self.recover_until_any(
+            format!("'{}'", kind).as_str(),
+            &TokenSet::from(kind),
+            recovery,
+        );
     }
 
-    fn at(&mut self, kind: TokenKind) -> bool {
-        self.current() == Some(kind)
+    fn recover_until_any(
+        &mut self,
+        expected_str: &str,
+        expected_set: &TokenSet,
+        recovery: &TokenSet,
+    ) {
+        if self.is_at_any(expected_set) {
+            return;
+        }
+
+        let start_location = self.current_token().location.clone();
+        if !self.is_at_any(recovery) {
+            self.with(CSTTreeKind::Error, |this| {
+                this.advance_until_any(expected_set, recovery);
+            });
+
+            let end_location = self.previous_token_all().location.clone();
+            let merged_location = start_location.merge(&end_location);
+
+            self.diagnostic_context.error(
+                "Unexpected token(s)",
+                &merged_location,
+                vec![],
+                vec![],
+            );
+        }
+
+        if !self.is_at_any(expected_set) {
+            self.diagnostic_context.error(
+                format!("Expected {}", expected_str).as_str(),
+                &start_location,
+                vec![],
+                vec![],
+            );
+        }
     }
 
-    fn at_any(&mut self, set: &TokenSet) -> bool {
-        let Some(kind) = self.current() else {
-            return false;
-        };
+    fn advance_until(&mut self, kind: TokenKind, recovery: &TokenSet) -> bool {
+        self.advance_until_any(&TokenSet::from(kind), recovery)
+            .is_some()
+    }
 
-        set.has(kind)
+    fn advance_until_any(
+        &mut self,
+        expected_set: &TokenSet,
+        recovery: &TokenSet,
+    ) -> Option<TokenKind> {
+        if let Some(kind) = self.at_any(expected_set) {
+            return Some(kind);
+        }
+
+        let merged_set = expected_set.union_set(recovery);
+        while !self.eof() && !self.is_at_any(&merged_set) {
+            self.event_token_skip();
+        }
+
+        self.at_any(expected_set)
+    }
+
+    fn event_token_advance(&mut self) -> TokenKind {
+        self.events.push(Event::Advance);
+        let kind = self.current_token().kind;
+        self.advance_token_stream();
+        kind
+    }
+
+    fn event_token_skip(&mut self) {
+        self.events.push(Event::Skip);
+        self.advance_token_stream();
+    }
+
+    fn advance_token_stream(&mut self) {
+        assert!(!self.eof());
+        self.fuel.replenish();
+        self.previous_pos_all = self.pos;
+        self.pos += 1;
+    }
+
+    fn eof(&self) -> bool {
+        self.current() == TokenKind::EndOfFile
+    }
+
+    fn at(&self, kind: TokenKind) -> bool {
+        self.current() == kind
+    }
+
+    fn at_any(&self, set: &TokenSet) -> Option<TokenKind> {
+        if set.has(self.current()) {
+            Some(self.current())
+        } else {
+            None
+        }
+    }
+
+    fn is_at_any(&self, set: &TokenSet) -> bool {
+        self.at_any(set).is_some()
     }
 
     fn eat(&mut self, kind: TokenKind) -> bool {
@@ -212,128 +623,52 @@ impl<'a> CSTParser<'a> {
         }
     }
 
-    fn expect(&mut self, kind: TokenKind, anchor_set: &TokenSet) {
-        if self.eat(kind) {
-            return;
+    fn eat_any(&mut self, expected_set: &TokenSet) -> Option<TokenKind> {
+        if self.at_any(expected_set).is_some() {
+            Some(self.advance())
+        } else {
+            None
         }
-
-        let anchor_set = TokenSet::from_kinds_and_sets(&[kind], &[anchor_set]);
-        self.recover_until(&anchor_set);
-
-        self.eat(kind);
     }
 
-    fn recover_until(&mut self, anchor_set: &TokenSet) {
-        if self.at_any(anchor_set) {
-            return;
-        }
-
-        self.with(CSTTreeKind::Error, |this| {
-            while !this.eof() && !this.at_any(anchor_set) {
-                this.advance();
-            }
-        });
+    fn expect(&mut self, kind: TokenKind, recovery: &TokenSet) -> bool {
+        self.recover_until(kind, recovery);
+        self.eat(kind)
     }
 
-    fn current(&mut self) -> Option<TokenKind> {
+    fn expect_any(
+        &mut self,
+        expected_str: &str,
+        expected_set: &TokenSet,
+        recovery: &TokenSet,
+    ) -> Option<TokenKind> {
+        self.recover_until_any(expected_str, expected_set, recovery);
+        self.eat_any(expected_set)
+    }
+
+    fn current(&self) -> TokenKind {
         self.fuel.consume();
-        self.current_token().map_or(None, |token| Some(token.kind))
+        self.current_token().kind
     }
 
-    fn current_token(&self) -> Option<&Token> {
-        self.tokens.get(self.pos)
+    fn current_token(&self) -> &Token {
+        self.tokens
+            .get(self.pos)
+            .unwrap_or(self.tokens.last().unwrap())
     }
 
-    // /// ```bnf
-    // /// file ::= <stmt>* ;
-    // /// ```
-    // fn parse_file(&mut self) {
-    //     let m = self.open();
-    //
-    //     while !self.eof() {
-    //         if !self.at_set(&Self::STARTERS_STMT) {
-    //             self.skip_unexpected_until(&[&Self::STARTERS_STMT]);
-    //             continue;
-    //         }
-    //
-    //         self.parse_stmt();
-    //     }
-    //
-    //     self.close(m, CSTTreeKind::File);
-    // }
-    //
-    // const STARTERS_STMT: TokenSet = token_set! {
-    //     tokens = [],
-    //     includes = [
-    //         CSTParser::STARTERS_FLOW_STMT,
-    //     ]
-    // };
-    // /// ```bnf
-    // /// <stmt> ::= <moduleDecl>
-    // ///          | <useDecl>
-    // ///          | <declStmt>
-    // ///          | <flowStmt>
-    // ///          ;
-    // /// ```
-    // fn parse_stmt(&mut self) {
-    //     match () {
-    //         _ if self.at_set(&Self::STARTERS_FLOW_STMT) => {
-    //             self.parse_flow_stmt();
-    //         }
-    //         _ => unreachable!(),
-    //     }
-    // }
-    //
-    // const STARTERS_FLOW_STMT: TokenSet = token_set! {
-    //     tokens = [
-    //         TokenKind::Return,
-    //         TokenKind::Break,
-    //         TokenKind::Continue,
-    //     ],
-    //     includes = [
-    //         CSTParser::STARTERS_EXPR,
-    //     ]
-    // };
-    // /// ```bnf
-    // /// <flowStmt> ::= "return" <expr>?
-    // ///              | "break"
-    // ///              | "continue"
-    // ///              | <deferStmt>
-    // ///              | <throwStmt>
-    // ///              | <forStmt>
-    // ///              | <whileStmt>
-    // ///              | <loopStmt>
-    // ///              | <block>
-    // ///              | <expr>
-    // ///              ;
-    // /// ```
-    // fn parse_flow_stmt(&mut self) {
-    //     match self.current() {
-    //         TokenKind::Return => {
-    //             let m = self.open();
-    //             self.expect(TokenKind::Return);
-    //             if self.at_set(&Self::STARTERS_EXPR) {
-    //                 self.parse_expr();
-    //             }
-    //             self.close(m, CSTTreeKind::ReturnStmt);
-    //         }
-    //         TokenKind::Break => {
-    //             let m = self.open();
-    //             self.expect(TokenKind::Break);
-    //             self.close(m, CSTTreeKind::BreakStmt);
-    //         }
-    //         TokenKind::Continue => {
-    //             let m = self.open();
-    //             self.expect(TokenKind::Continue);
-    //             self.close(m, CSTTreeKind::ContinueStmt);
-    //         }
-    //         _ if self.at_set(&Self::STARTERS_EXPR) => {
-    //             self.parse_expr();
-    //         }
-    //         _ => unreachable!(),
-    //     }
-    // }
-    //
+    fn previous_token(&self) -> &Token {
+        self.tokens
+            .get(self.previous_pos)
+            .unwrap_or(self.tokens.last().unwrap())
+    }
+
+    fn previous_token_all(&self) -> &Token {
+        self.tokens
+            .get(self.previous_pos_all)
+            .unwrap_or(self.tokens.last().unwrap())
+    }
+
     // const STARTERS_EXPR: TokenSet = token_set! {
     //     tokens = [],
     //     includes = [
@@ -488,297 +823,6 @@ impl<'a> CSTParser<'a> {
     //         }
     //     }
     // }
-    //
-    // const STARTERS_LITERAL: TokenSet = token_set! {
-    //     tokens = [
-    //         TokenKind::Integer,
-    //         TokenKind::Float,
-    //         TokenKind::String,
-    //         TokenKind::FormatStringPart,
-    //         TokenKind::True,
-    //         TokenKind::False,
-    //         TokenKind::Null,
-    //         TokenKind::Identifier,
-    //         TokenKind::LeftParen,
-    //     ],
-    //     includes = [
-    //         CSTParser::STARTERS_LAMBDA,
-    //     ]
-    // };
-    // /// ```bnf
-    // /// <literal> ::= <parenExpr>
-    // ///             | <integer>
-    // ///             | <float>
-    // ///             | <string>
-    // ///             | <fstring>
-    // ///             | "true" | "false"
-    // ///             | "null"
-    // ///             | <id>
-    // ///             | <lambda>
-    // ///             | <tuple>
-    // ///             | <list>
-    // ///             | <map>
-    // ///             | <ifStmt>
-    // ///             | <whenStmt>
-    // ///             | <tryStmt>
-    // ///             | <selectStmt>
-    // ///             ;
-    // /// ```
-    // fn parse_literal(&mut self) -> MarkClosed {
-    //     match self.current() {
-    //         // identifiers
-    //         TokenKind::Identifier => {
-    //             let m = self.open();
-    //             self.advance();
-    //             self.close(m, CSTTreeKind::Identifier)
-    //         }
-    //
-    //         // literals
-    //         TokenKind::Integer
-    //         | TokenKind::Float
-    //         | TokenKind::True
-    //         | TokenKind::False
-    //         | TokenKind::Null
-    //         | TokenKind::String => {
-    //             let m = self.open();
-    //             self.advance();
-    //             self.close(m, CSTTreeKind::Literal)
-    //         }
-    //
-    //         // ( expr )
-    //         TokenKind::LeftParen => {
-    //             let m = self.open();
-    //             self.advance();
-    //
-    //             if self.at(TokenKind::RightParen) {
-    //                 self.expect(TokenKind::RightParen);
-    //                 return self.close(m, CSTTreeKind::ParenExpr);
-    //             }
-    //
-    //             self.parse_expr();
-    //
-    //             if self.at(TokenKind::RightParen) {
-    //                 self.expect(TokenKind::RightParen);
-    //                 return self.close(m, CSTTreeKind::ParenExpr);
-    //             }
-    //
-    //             while self.at(TokenKind::Comma) {
-    //                 self.advance();
-    //
-    //                 if self.at_set(&Self::STARTERS_EXPR) {
-    //                     self.parse_expr();
-    //                 }
-    //             }
-    //
-    //             self.expect(TokenKind::RightParen);
-    //             self.close(m, CSTTreeKind::TupleLiteral)
-    //         }
-    //
-    //         // format strings
-    //         TokenKind::FormatStringPart => self.parse_fstring(),
-    //
-    //         _ if self.at_set(&Self::STARTERS_LAMBDA) => self.parse_lambda(),
-    //
-    //         _ => {
-    //             let m = self.open();
-    //             if !self.eof() {
-    //                 self.advance_with_error("unexpected token");
-    //             }
-    //             self.close(m, CSTTreeKind::Error)
-    //         }
-    //     }
-    // }
-    //
-    // fn parse_identifier_or_keyword(&mut self) -> MarkClosed {
-    //     match self.current() {
-    //         TokenKind::Identifier => self.parse_literal(),
-    //         _ if self.at_set(&TOKEN_LANGUAGE_KEYWORDS) => {
-    //             let m = self.open();
-    //             self.advance();
-    //             self.close(m, CSTTreeKind::Identifier)
-    //         }
-    //         _ => {
-    //             let m = self.open();
-    //             if !self.eof() {
-    //                 self.advance_with_error("unexpected token");
-    //             }
-    //             self.close(m, CSTTreeKind::Error)
-    //         }
-    //     }
-    // }
-    //
-    // /// ```bnf
-    // /// <fstring> ::= <fstringStart> (<expr> | <fstringPart>)* <fstringEnd> ;
-    // /// ```
-    // fn parse_fstring(&mut self) -> MarkClosed {
-    //     let m = self.open();
-    //     self.advance();
-    //     while !self.eof() {
-    //         self.parse_expr();
-    //
-    //         if self.eof() {
-    //             self.unexpected_token(&[TokenKind::String]);
-    //             break;
-    //         }
-    //
-    //         match self.current() {
-    //             TokenKind::FormatStringPart => {
-    //                 self.advance();
-    //                 continue;
-    //             }
-    //             TokenKind::String => {
-    //                 self.advance();
-    //                 break;
-    //             }
-    //             _ => {
-    //                 self.unexpected_token(&[TokenKind::String]);
-    //                 break;
-    //             }
-    //         }
-    //     }
-    //     self.close(m, CSTTreeKind::FormatString)
-    // }
-    //
-    // const STARTERS_LAMBDA: TokenSet = token_set! {
-    //     tokens = [
-    //         TokenKind::LeftBrace,
-    //         TokenKind::BitOr,
-    //         TokenKind::Or,
-    //     ],
-    //     includes = []
-    // };
-    // /// ```bnf
-    // /// <lambda> ::= <lambdaExprForm>
-    // ///            | <lambdaBlockForm>
-    // ///            ;
-    // /// ```
-    // fn parse_lambda(&mut self) -> MarkClosed {
-    //     match self.current() {
-    //         TokenKind::BitOr | TokenKind::Or => self.parse_lambda_expr_form(),
-    //         TokenKind::LeftBrace => self.parse_lambda_block_form(),
-    //         _ => unreachable!(),
-    //     }
-    // }
-    //
-    // /// ```bnf
-    // /// <lambdaExprForm> ::= <lambdaParamDecl> <expr>
-    // /// ```
-    // fn parse_lambda_expr_form(&mut self) -> MarkClosed {
-    //     let m = self.open();
-    //     self.parse_lambda_param_decl();
-    //     self.parse_expr();
-    //     self.close(m, CSTTreeKind::LambdaExprFormLiteral)
-    // }
-    //
-    // /// ```bnf
-    // /// <lambdaBlockForm> ::= "{" <lambdaParamDecl>? stmt* "}"
-    // /// ```
-    // fn parse_lambda_block_form(&mut self) -> MarkClosed {
-    //     let m = self.open();
-    //     self.expect(TokenKind::LeftBrace);
-    //
-    //     if self.at(TokenKind::BitOr) || self.at(TokenKind::Or) {
-    //         self.parse_lambda_param_decl();
-    //     }
-    //
-    //     while !self.eof() {
-    //         if !self.at_set(&Self::STARTERS_STMT) {
-    //             break;
-    //         }
-    //
-    //         self.parse_stmt();
-    //     }
-    //
-    //     self.expect(TokenKind::RightBrace);
-    //
-    //     self.close(m, CSTTreeKind::LambdaBlockFormLiteral)
-    // }
-    //
-    // /// ```bnf
-    // /// <lambdaParamDecl> ::= "|" <fnParam> ("," <fnParam>)* "|" ;
-    // /// ```
-    // fn parse_lambda_param_decl(&mut self) {
-    //     let m = self.open();
-    //
-    //     match self.current() {
-    //         TokenKind::BitOr => {
-    //             self.expect(TokenKind::BitOr);
-    //
-    //             if !self.at(TokenKind::BitOr) {
-    //                 panic!("params not implemented yet")
-    //             }
-    //
-    //             self.expect(TokenKind::BitOr);
-    //             self.close(m, CSTTreeKind::LambdaParameterDecl);
-    //         }
-    //         TokenKind::Or => {
-    //             self.expect(TokenKind::Or);
-    //             self.close(m, CSTTreeKind::LambdaParameterDecl);
-    //         }
-    //         _ => unreachable!(),
-    //     }
-    // }
-    //
-    // fn at_set(&mut self, types: &TokenSet) -> bool {
-    //     types.contains(&self.current())
-    // }
-    //
-    // fn expect(&mut self, kind: TokenKind) {
-    //     if self.eat(kind) {
-    //         return;
-    //     }
-    //     self.unexpected_token(&[kind]);
-    // }
-    //
-    // fn advance_with_error(&mut self, error: &str) {
-    //     let m = self.open();
-    //     let location = self.nth_token(0).location.clone();
-    //     self.diagnostic_context
-    //         .error(error, &location, vec![], vec![]);
-    //     self.advance();
-    //     self.close(m, CSTTreeKind::Error);
-    // }
-    //
-    // // consume unexpected tokens until one is found that is contained within
-    // // the terminator set
-    // // if at least one unexpected token was consumed, a diagnostic error is reported
-    // fn skip_unexpected_until(&mut self, terminators: &[&TokenSet]) {
-    //     let terminators = union_token_sets(terminators);
-    //
-    //     // skip unexpected tokens until we reach either an expected or terminator token
-    //     while !self.eof() {
-    //         // found an expected token, stop skipping
-    //         if terminators.contains(&self.current()) {
-    //             break;
-    //         }
-    //
-    //         self.advance_with_error("unexpected token");
-    //     }
-    //
-    //     if self.eof() {
-    //         let current_loc = self.current_token().location.clone();
-    //         self.diagnostic_context.error(
-    //             "unexpected end of file",
-    //             &current_loc,
-    //             vec![],
-    //             vec![],
-    //         );
-    //     }
-    // }
-    //
-    // fn unexpected_token(&mut self, expected: &[TokenKind]) {
-    //     let (kind, location) = {
-    //         let current = self.nth_token(0);
-    //         (current.kind, current.location.clone())
-    //     };
-    //
-    //     self.diagnostic_context.error(
-    //         format!("expected token(s) {:?}, got {:?}", expected, kind).as_str(),
-    //         &location,
-    //         vec![],
-    //         vec![],
-    //     );
-    // }
 
     fn build_tree(&mut self) -> CSTTree {
         let mut tokens = self.tokens.into_iter();
@@ -800,10 +844,13 @@ impl<'a> CSTParser<'a> {
 
                 // a tree is done,
                 // pop it off the stack and append to a new current tree
+                // if the produced tree is empty, discard it
                 Event::Close => {
                     let tree = stack.pop().unwrap();
-                    let current = stack.last_mut().unwrap();
-                    current.children.push(CSTNode::Tree(tree));
+                    if !tree.children.is_empty() {
+                        let current = stack.last_mut().unwrap();
+                        current.children.push(CSTNode::Tree(tree));
+                    }
                 }
 
                 // consume a token and append it to the current tree
@@ -812,11 +859,16 @@ impl<'a> CSTParser<'a> {
                     let tree = stack.last_mut().unwrap();
                     tree.children.push(CSTNode::Token(token));
                 }
+
+                // skip over a token
+                Event::Skip => {
+                    tokens.next().unwrap();
+                }
             }
         }
 
         assert_eq!(stack.len(), 1);
-        assert!(tokens.next().is_none());
+        assert_eq!(tokens.next().unwrap().kind, TokenKind::EndOfFile);
         stack.pop().unwrap()
     }
 }

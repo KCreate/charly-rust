@@ -247,4 +247,70 @@ StringExprEnd                   }
 StringTextPart                  !
 StringEnd                       "
 
+
+
+struct List<T> {
+    let buffer: UninitializedArray<T>
+    let size: i32
+}
+
+@WellKnownType
+enum ControlFlow {
+    Return(R),
+    Continue,
+    Break,
+    BreakWithValue(value: R)
+}
+
+impl<T> List<T> {
+    func map<R>(self, transformer: |value: T, index: i32| -> R) -> List<R> {
+        const result = List<R>.withCapacity(self.size)
+        for i in 0..self.size {
+            result.add(transformer(self.at(i), i))
+        }
+        return result
+    }
+
+    func each(self, action: |value: T, index: i32| -> ControlFlow<()>) {
+        for i in 0..self.size {
+            action(self.at(i), i)
+        }
+    }
+}
+
+const nonEvenNumbersDoubled = data.map -> |e, i| {
+    if i % 2 == 0 continue
+    e * 2
+}
+
+const data: List<i32> = getData()
+const result = data
+    .map -> { it * 2 }
+    .filter -> { it % 3 == 0 }
+    .any -> { it > 10 }
+
+
+
+
+
+@Deprecated(
+    message = "Use add(a:b:) instead",
+    since = "1.2.3",
+    reason = "This function is deprecated due to performance issues.",
+    removalVersion = "2.0.0"
+)
+@NeverInline
+@NoMangle
+@MyCustomAnnotation
+@FooBarLevel(42)
+func add(a: i32, b: i32) -> i32 {
+    return a + b
+}
+
+
+
+
+
+
+
 // end of file

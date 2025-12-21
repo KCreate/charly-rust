@@ -21,7 +21,7 @@
 // SOFTWARE.
 
 use crate::charly::compiler::token::{
-    IntegerBaseSpecifier, NumberSuffix, TOKEN_MAX_STR_LEN, Token, TokenKind, TokenValue,
+    IntegerBaseSpecifier, NumberSuffix, Token, TokenKind, TokenValue, TOKEN_MAX_STR_LEN,
 };
 use crate::charly::utils::diagnostics::{DiagnosticContext, DiagnosticLocation, FileId};
 use crate::charly::utils::fuel_store::FuelStore;
@@ -81,6 +81,8 @@ impl<'a> Tokenizer<'a> {
                 TokenizerMode::String => self.consume_string(),
             }
         }
+
+        self.emit_token(TokenKind::EndOfFile);
     }
 
     fn consume_token(&mut self) {
@@ -116,12 +118,6 @@ impl<'a> Tokenizer<'a> {
             return;
         }
 
-        // raw text identifiers
-        if let Some("@\"") = self.buffer.peek_str_with_length(2) {
-            self.consume_raw_text_identifier();
-            return;
-        }
-
         match char {
             // LF line separator
             '\n' => {
@@ -137,6 +133,12 @@ impl<'a> Tokenizer<'a> {
                 self.opened_string_literals.push(quote_span);
                 self.emit_token(TokenKind::StringStart);
                 self.mode = TokenizerMode::String;
+                return;
+            }
+
+            // raw identifier literals
+            '`' => {
+                self.consume_raw_text_identifier();
                 return;
             }
 
@@ -422,17 +424,24 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn consume_raw_text_identifier(&mut self) {
-        assert!(self.buffer.eat_str("@\""));
+        assert!(self.buffer.eat_char('`'));
+        let open_span = self.buffer.window_span.clone();
 
-        // consume any character until we hit a closing "
+        // consume any character until we hit a closing `
         let mut buf = String::new();
-        while let Some(char) = self.buffer.peek_char() {
-            if char == '"' {
-                assert!(self.buffer.eat_char('"'));
+
+        loop {
+            if let Some(char) = self.buffer.peek_char() {
+                if self.buffer.eat_char('`') {
+                    break;
+                }
+                self.buffer.advance();
+                buf.push(char);
+            } else {
+                // reached EOF without closing `
+                self.emit_error_unclosed_raw_identifier_literal(&open_span);
                 break;
             }
-            self.buffer.advance();
-            buf.push(char);
         }
 
         self.emit_token_with_value(
@@ -658,16 +667,9 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn build_token(&mut self, kind: TokenKind, value: Option<TokenValue>) -> Token {
-        let location = self.window_location();
-
-        assert!(
-            location.span.codepoint_length() > 0,
-            "expected token to contain at least one character"
-        );
-
         Token {
             kind,
-            location,
+            location: self.window_location(),
             raw: self.buffer.window_as_str().to_string(),
             value,
         }
@@ -728,8 +730,8 @@ impl<'a> Tokenizer<'a> {
         );
     }
 
-    fn emit_error_unclosed_multi_line_comment(&mut self, span: &TextSpan) {
-        let label_location = self.build_location_from_span(span);
+    fn emit_error_unclosed_multi_line_comment(&mut self, open_span: &TextSpan) {
+        let label_location = self.build_location_from_span(open_span);
         self.diagnostic_context.error(
             "Unclosed multi-line comment",
             &label_location,
@@ -756,10 +758,20 @@ impl<'a> Tokenizer<'a> {
         );
     }
 
-    fn emit_error_unclosed_char_literal(&mut self, span: &TextSpan) {
-        let label_location = self.build_location_from_span(span);
+    fn emit_error_unclosed_char_literal(&mut self, open_span: &TextSpan) {
+        let label_location = self.build_location_from_span(open_span);
         self.diagnostic_context.error(
             "Unclosed character literal",
+            &label_location,
+            vec![(Some("Opened here"), label_location.clone())],
+            vec![],
+        );
+    }
+
+    fn emit_error_unclosed_raw_identifier_literal(&mut self, open_span: &TextSpan) {
+        let label_location = self.build_location_from_span(open_span);
+        self.diagnostic_context.error(
+            "Unclosed raw identifier literal",
             &label_location,
             vec![(Some("Opened here"), label_location.clone())],
             vec![],
@@ -839,6 +851,7 @@ mod tests {
 
         let tokens: Vec<String> = Tokenizer::tokenize(source, &mut context)
             .iter()
+            .filter(|token| token.kind != TokenKind::EndOfFile)
             .filter(|token| match token_stream_detail_level {
                 TokenStreamDetailLevel::Full => true,
                 TokenStreamDetailLevel::NoWhitespace => match token.kind {
@@ -1348,16 +1361,32 @@ mod tests {
     }
 
     #[test]
-    fn test_identifier_string_literal() {
+    fn test_raw_identifier_literal() {
         let source = r#"
-            @"hello world"
-            @"hello {name}"
+            `hello world`
+            `hello {name}`
+            `\t\n`
         "#;
         assert_tokens(
             source,
             TokenStreamDetailLevel::NoWhitespaceAndComments,
-            &["Identifier(hello world)", "Identifier(hello {name})"],
+            &[
+                "Identifier(hello world)",
+                "Identifier(hello {name})",
+                "Identifier(\\\\t\\\\n)",
+            ],
             &[],
+        );
+    }
+
+    #[test]
+    fn test_unclosed_raw_identifier_literal() {
+        let source = "`hello world";
+        assert_tokens(
+            source,
+            TokenStreamDetailLevel::NoWhitespaceAndComments,
+            &["Identifier(hello world)"],
+            &["Unclosed raw identifier literal"],
         );
     }
 

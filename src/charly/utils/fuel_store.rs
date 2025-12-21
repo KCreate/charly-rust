@@ -20,9 +20,11 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+use std::cell::Cell;
+
 pub struct FuelStore {
     name: String,
-    fuel: i32,
+    fuel: Cell<i32>,
     initial_capacity: i32,
 }
 
@@ -30,20 +32,21 @@ impl FuelStore {
     pub fn new(name: &str, initial_capacity: i32) -> FuelStore {
         Self {
             name: name.to_string(),
-            fuel: initial_capacity,
+            fuel: Cell::new(initial_capacity),
             initial_capacity,
         }
     }
 
-    pub fn consume(&mut self) {
-        self.fuel = self.fuel - 1;
-        if self.fuel <= 0 {
+    pub fn consume(&self) {
+        let new_fuel = self.fuel.get() - 1;
+        self.fuel.set(new_fuel);
+        if new_fuel <= 0 {
             panic!("{}: ran out of fuel!", self.name)
         }
     }
 
-    pub fn replenish(&mut self) {
-        self.fuel = self.initial_capacity;
+    pub fn replenish(&self) {
+        self.fuel.set(self.initial_capacity);
     }
 }
 
@@ -51,7 +54,7 @@ impl FuelStore {
 mod tests {
     #[test]
     fn test_fuel_store() {
-        let mut store = super::FuelStore::new("test", 3);
+        let store = super::FuelStore::new("test", 3);
         store.consume();
         store.consume();
         store.replenish();
@@ -63,7 +66,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "test: ran out of fuel!")]
     fn test_fuel_store_out_of_fuel() {
-        let mut store = super::FuelStore::new("test", 2);
+        let store = super::FuelStore::new("test", 2);
         store.consume();
         store.consume();
     }

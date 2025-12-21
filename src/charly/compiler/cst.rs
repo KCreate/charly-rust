@@ -20,7 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use crate::charly::compiler::token::Token;
+use crate::charly::compiler::token::{Token, TokenKind};
 use crate::charly::utils::ascii_tree::IndentStyle;
 use crate::charly::utils::cst_printer::CstPrinter;
 use crate::charly::utils::diagnostics::DiagnosticLocation;
@@ -32,6 +32,54 @@ pub enum CSTTreeKind {
     Error,
     Program,
     TopLevelItem,
+
+    // import declarations
+    ImportDecl,
+    ImportTarget,
+    ImportPath,
+    ImportAsItem,
+
+    // literals
+    Literal,
+
+    // attributes
+    NodeWithAttributes,
+    AttributeList,
+    Attribute,
+    AttributeArguments,
+    AttributeItem,
+    AttributeKey,
+    AttributeValue,
+
+    // several kinds of brackets
+    ParenGroup,
+    BracketGroup,
+    BraceGroup,
+    AngleBracketGroup,
+}
+
+impl CSTTreeKind {
+    pub fn matching_bracket_token_kinds(&self) -> Option<(TokenKind, TokenKind)> {
+        match self {
+            CSTTreeKind::ParenGroup => {
+                Some((TokenKind::LeftParen, TokenKind::RightParen))
+            }
+            CSTTreeKind::BracketGroup => {
+                Some((TokenKind::LeftBracket, TokenKind::RightBracket))
+            }
+            CSTTreeKind::BraceGroup => {
+                Some((TokenKind::LeftBrace, TokenKind::RightBrace))
+            }
+            CSTTreeKind::AngleBracketGroup => Some((TokenKind::Lt, TokenKind::Gt)),
+            _ => None,
+        }
+    }
+}
+
+impl Display for CSTTreeKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 pub struct CSTTree {

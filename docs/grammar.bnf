@@ -37,16 +37,9 @@ TopLevelItem ::= ImportDecl
 
 // ------ Import Statement ------
 
-ImportDecl ::= Attribute* "import" ImportTarget
+ImportDecl ::= AttributeList? "import" ImportPath ImportAsItem?
 
-ImportTarget ::= ImportSingle
-             | ImportWildcard
-
-ImportSingle ::= ImportPath ImportAsItem?
-
-ImportWildcard ::= ImportPath "." "*"
-
-ImportPath ::= Id ("." Id)*
+ImportPath ::= Id ("." Id)* ("." "*")?
 
 ImportAsItem ::= "as" Id
 
@@ -61,7 +54,7 @@ DeclMod ::= "export"
 
 // ------ Function Declaration ------
 
-FnDecl ::= Attribute* DeclMod* "fn" Id GenericParamList? FnParamList? FnReturnAnnot? FnBody
+FnDecl ::= AttributeList? DeclMod* "fn" Id GenericParamList? FnParamList? FnReturnAnnot? FnBody
 
 FnParamList ::= "(" (FnParam ("," FnParam)*)? ")"
 
@@ -78,18 +71,18 @@ FnBlockBody ::= Block
 
 // ------ Variable Declarations ------
 
-VarDecl ::= Attribute* DeclMod* ("const" | "let") VarDeclTarget ("=" Expr)?
+VarDecl ::= AttributeList? DeclMod* ("const" | "let") VarDeclTarget ("=" Expr)?
 
 VarDeclTarget ::= NameDecl
                 | UnpackTarget
 
 // ------ Typealias Declarations ------
 
-TypeAliasDecl ::= Attribute* DeclMod* "typealias" Id GenericParamList? ("=" Type)?
+TypeAliasDecl ::= AttributeList? DeclMod* "typealias" Id GenericParamList? ("=" Type)?
 
 // ------ Struct Declarations ------
 
-StructDecl ::= Attribute* DeclMod* "struct" Id GenericParamList? StructBody
+StructDecl ::= AttributeList? DeclMod* "struct" Id GenericParamList? StructBody
 
 StructBody ::= "{" StructItem* "}"
 
@@ -98,7 +91,7 @@ StructItem ::= VarDecl
 
 // ------ Interface Declarations ------
 
-InterfaceDecl ::= Attribute* DeclMod* "interface" Id GenericParamList? InterfaceExtends* InterfaceBody
+InterfaceDecl ::= AttributeList? DeclMod* "interface" Id GenericParamList? InterfaceExtends* InterfaceBody
 
 InterfaceExtends ::= "extends" Type ("," Type)*
 
@@ -109,7 +102,7 @@ InterfaceItem ::= FnDecl
 
 // ------ Union Declarations ------
 
-UnionDecl ::= Attribute* DeclMod* "union" GenericParamList? UnionBody
+UnionDecl ::= AttributeList? DeclMod* "union" GenericParamList? UnionBody
 
 UnionBody ::= "{" UnionItem ("," UnionItem)* "}"
 
@@ -119,7 +112,7 @@ UnionItemParams ::= "(" NameDecl ("," NameDecl)* ")"
 
 // ------ Enum Declarations ------
 
-EnumDecl ::= Attribute* DeclMod* "enum" EnumHeader EnumBody
+EnumDecl ::= AttributeList? DeclMod* "enum" EnumHeader EnumBody
 
 EnumHeader ::= Id TypeAnnotation
              | "flags" Id TypeAnnotation?
@@ -130,7 +123,7 @@ EnumItem ::= Id ("=" Expr)?
 
 // ------ Impl Declarations ------
 
-ImplDecl ::= Attribute* "impl" GenericParamList? ImplTarget ImplBody
+ImplDecl ::= AttributeList? "impl" GenericParamList? ImplTarget ImplBody
 
 ImplTarget ::= ImplTypeTarget
              | ImplInterfaceTarget
@@ -286,7 +279,6 @@ Literal ::= Id
           | Block
 
 Id ::= "identifier"
-     | "@" String
 
 Number ::= Integer | Float
 
@@ -339,6 +331,9 @@ ListLiteral ::= "[" "]"
 
 MapLiteral ::= ".{" "}"
 
+Boolean ::= "true"
+          | "false"
+
 // ------ Misc ------
 
 UnpackTarget ::= "(" (UnpackTargetItem ("," UnpackTargetItem)*)? ")"
@@ -351,15 +346,15 @@ UnpackTargetItem ::= Id
 ConditionTarget ::= Expr
                   | ("const" | "let") Type UnpackTarget? "=" Expr
 
-Attribute ::= "@" "[" AttributeArguments? "]"
+AttributeList ::= Attribute*
 
-AttributeArguments ::= AttributeItem ("," AttributeItem)*
+Attribute ::= "@" Id AttributeArguments?
 
-AttributeItem ::= AttributeKey
-                | AttributeKey "=" AttributeValue?
-                | AttributeKey "(" AttributeArguments? ")"
+AttributeArguments ::= "(" AttributeItem ("," AttributeItem)* ")"
 
-AttributeKey ::= Id
+AttributeItem ::= Id
+                | Id "=" AttributeValue
+                | Id AttributeArguments
 
 AttributeValue ::= String
                  | Integer
