@@ -56,7 +56,7 @@ DeclMod ::= "export"
 
 FnDecl ::= AttributeList? DeclMod* "fn" Id GenericParamList? FnParamList? FnReturnAnnot? FnBody
 
-FnParamList ::= "(" (FnParam ("," FnParam)*)? ")"
+FnParamList ::= "(" FnParam* ")"
 
 FnParam ::= "..."? NameDecl
 
@@ -93,7 +93,7 @@ StructItem ::= VarDecl
 
 InterfaceDecl ::= AttributeList? DeclMod* "interface" Id GenericParamList? InterfaceExtends* InterfaceBody
 
-InterfaceExtends ::= "extends" Type ("," Type)*
+InterfaceExtends ::= "extends" Type*
 
 InterfaceBody ::= "{" InterfaceItem* "}"
 
@@ -104,11 +104,11 @@ InterfaceItem ::= FnDecl
 
 UnionDecl ::= AttributeList? DeclMod* "union" GenericParamList? UnionBody
 
-UnionBody ::= "{" UnionItem ("," UnionItem)* "}"
+UnionBody ::= "{" UnionItem* "}"
 
 UnionItem ::= Id UnionItemParams?
 
-UnionItemParams ::= "(" NameDecl ("," NameDecl)* ")"
+UnionItemParams ::= "(" NameDecl* ")"
 
 // ------ Enum Declarations ------
 
@@ -117,7 +117,7 @@ EnumDecl ::= AttributeList? DeclMod* "enum" EnumHeader EnumBody
 EnumHeader ::= Id TypeAnnotation
              | "flags" Id TypeAnnotation?
 
-EnumBody ::= "{" EnumItem ("," EnumItem)* "}"
+EnumBody ::= "{" EnumItem* "}"
 
 EnumItem ::= Id ("=" Expr)?
 
@@ -239,12 +239,12 @@ PostfixExpr ::= GenericArgumentList
 PostfixCallExpr ::= CallArgumentList
                   | CallArgumentList? LambdaLiteral
 
-CallArgumentList ::= "(" (CallArgument ("," CallArgument)*)? ")"
+CallArgumentList ::= "(" CallArgument* ")"
 
 CallArgument ::= Expr
                | "." Id "=" Expr
 
-PostfixIndexExpr ::= "[" Expr ("," Expr)* "]"
+PostfixIndexExpr ::= "[" Expr* "]"
 
 PostfixMemberExpr ::= "." Id
 
@@ -254,11 +254,11 @@ Type ::= TypePathItem ("." TypePathItem)* "?"
 
 TypePathItem ::= Id GenericArgumentList
 
-GenericParamList ::= "<" GenericParamItem ("," GenericParamItem)* ">"
+GenericParamList ::= "<" GenericParamItem* ">"
 
 GenericParamItem ::= Id (":" Type ("&" Type)*)?
 
-GenericArgumentList ::= "<" Type ("," Type)* ">"
+GenericArgumentList ::= "<" Type* ">"
 
 NameDecl ::= Id TypeAnnotation?
 
@@ -323,13 +323,11 @@ StringExprEnd ::= "}"
 
 LambdaLiteral ::= "->" LambdaParameterDecl? BlockOrExpr
 
-LambdaParameterDecl ::= "|" LambdaParameterList? "|" TypeAnnotation?
-
-LambdaParameterList ::= NameDecl ("," NameDecl)*
+LambdaParameterDecl ::= "|" NameDecl* "|" TypeAnnotation?
 
 TupleLiteral ::= "(" ")"
                | "(" Expr "," ")"
-               | "(" Expr ("," Expr)* ")"
+               | "(" Expr* ")"
 
 ListLiteral ::= "[" "]"
 
@@ -340,8 +338,8 @@ Boolean ::= "true"
 
 // ------ Misc ------
 
-UnpackTarget ::= "(" (UnpackTargetItem ("," UnpackTargetItem)*)? ")"
-               | "{" (UnpackTargetItem ("," UnpackTargetItem)*)? "}"
+UnpackTarget ::= "(" UnpackTargetItem* ")"
+               | "{" UnpackTargetItem* "}"
 
 UnpackTargetItem ::= Id
                    | Expr
@@ -354,4 +352,4 @@ AttributeList ::= Attribute*
 
 Attribute ::= "@" Id AttributeArguments?
 
-AttributeArguments ::= "(" Expr ("," Expr)* ")"
+AttributeArguments ::= "(" Expr* ")"
