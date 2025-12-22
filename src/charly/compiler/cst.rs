@@ -40,7 +40,9 @@ pub enum CSTTreeKind {
     ImportAsItem,
 
     // literals
-    Literal,
+    Atom,
+    String,
+    StringInterpolatedExpr,
 
     // attributes
     NodeWithAttributes,

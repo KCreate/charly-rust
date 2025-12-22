@@ -229,7 +229,7 @@ Expr ::= Expr InfixOp Expr
        | IfStmt
        | MatchStmt
        | SelectStmt
-       | Literal
+       | Atom
 
 PostfixExpr ::= GenericArgumentList
               | PostfixCallExpr
@@ -266,7 +266,7 @@ TypeAnnotation ::= ":" Type
 
 // ------ Literals ------
 
-Literal ::= Id
+Atom ::= Id
           | Number
           | String
           | "true" | "false"
@@ -315,7 +315,11 @@ StringEnd ::= '"'
 StringPart ::= StringText
              | StringInterpolation
 
-StringInterpolation ::= "{" Expr "}"
+StringInterpolation ::= StringExprStart Expr StringExprEnd
+
+StringExprStart ::= "{"
+
+StringExprEnd ::= "}"
 
 LambdaLiteral ::= "->" LambdaParameterDecl? BlockOrExpr
 
@@ -350,13 +354,4 @@ AttributeList ::= Attribute*
 
 Attribute ::= "@" Id AttributeArguments?
 
-AttributeArguments ::= "(" AttributeItem ("," AttributeItem)* ")"
-
-AttributeItem ::= Id
-                | Id "=" AttributeValue
-                | Id AttributeArguments
-
-AttributeValue ::= String
-                 | Integer
-                 | Float
-                 | Boolean
+AttributeArguments ::= "(" Expr ("," Expr)* ")"

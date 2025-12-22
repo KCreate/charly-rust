@@ -75,7 +75,6 @@ impl<'a> CSTParser<'a> {
     }
 
     pub fn parse(&mut self) -> CSTTree {
-        self.skip_whitespace_and_comments();
         self.parse_program();
         self.build_tree()
     }
@@ -85,6 +84,7 @@ impl<'a> CSTParser<'a> {
     /// ```
     fn parse_program(&mut self) {
         self.with(CSTTreeKind::Program, |this| {
+            this.skip_whitespace_and_comments();
             this.expect_sequence(
                 "a top level item",
                 &Self::STARTERS_TOP_LEVEL_ITEM,
@@ -99,10 +99,6 @@ impl<'a> CSTParser<'a> {
         });
     }
 
-    const STARTERS_TOP_LEVEL_ITEM: TokenSet = TokenSet::from_kinds_and_sets(
-        &[],
-        &[&Self::STARTERS_IMPORT_DECL, &Self::STARTERS_ATOM],
-    );
     /// ```bnf
     /// TopLevelItem ::= ImportDecl
     ///                | FnDecl
@@ -115,6 +111,10 @@ impl<'a> CSTParser<'a> {
     ///                | ImplDecl
     ///                | Stmt
     /// ```
+    const STARTERS_TOP_LEVEL_ITEM: TokenSet = TokenSet::from_kinds_and_sets(
+        &[],
+        &[&Self::STARTERS_IMPORT_DECL, &Self::STARTERS_ATOM],
+    );
     fn parse_top_level_item(&mut self, recovery: &TokenSet) -> MarkClosed {
         self.with(CSTTreeKind::TopLevelItem, |this| {
             match this.current() {
@@ -124,11 +124,11 @@ impl<'a> CSTParser<'a> {
         })
     }
 
-    const STARTERS_IMPORT_DECL: TokenSet =
-        TokenSet::from_kinds_and_sets(&[TokenKind::Import], &[]);
     /// ```bnf
     /// ImportDecl ::= "import" ImportPath ImportAsItem?
     /// ```
+    const STARTERS_IMPORT_DECL: TokenSet =
+        TokenSet::from_kinds_and_sets(&[TokenKind::Import], &[]);
     fn parse_import_decl(&mut self, recovery: &TokenSet) -> MarkClosed {
         self.with(CSTTreeKind::ImportDecl, |this| {
             this.expect(TokenKind::Import, &recovery.union(TokenKind::As));
@@ -142,11 +142,11 @@ impl<'a> CSTParser<'a> {
         })
     }
 
-    const STARTERS_PATH_ENTRY: TokenSet =
-        TokenSet::from_kinds(&[TokenKind::Identifier, TokenKind::Mul]);
     /// ```bnf
     /// ImportPath ::= Id ("." Id)* ("." "*")?
     /// ```
+    const STARTERS_PATH_ENTRY: TokenSet =
+        TokenSet::from_kinds(&[TokenKind::Identifier, TokenKind::Mul]);
     fn parse_import_path(&mut self, recovery: &TokenSet) -> MarkClosed {
         self.with(CSTTreeKind::ImportPath, |this| {
             this.expect_sequence(
@@ -192,25 +192,26 @@ impl<'a> CSTParser<'a> {
         })
     }
 
-    const STARTERS_ATTRIBUTE: TokenSet =
-        TokenSet::from_kinds_and_sets(&[TokenKind::AtSign], &[]);
     /// ```bnf
     /// Attribute ::= "@" Id ("(" AttributeArguments? ")")?
     /// ```
+    const STARTERS_ATTRIBUTE: TokenSet =
+        TokenSet::from_kinds_and_sets(&[TokenKind::AtSign], &[]);
     fn parse_attribute(&mut self, recovery: &TokenSet) -> MarkClosed {
         self.with(CSTTreeKind::Attribute, |this| {
             this.expect(TokenKind::AtSign, recovery);
             this.expect(TokenKind::Identifier, &recovery.union(TokenKind::LeftParen));
-
-            if this.at(TokenKind::LeftParen) {
+            if this.is_at_any(&Self::STARTERS_ATTRIBUTE_ARGUMENTS) {
                 this.parse_attribute_arguments(recovery);
             }
         })
     }
 
     /// ```bnf
-    /// AttributeArguments ::= AttributeItem ("," AttributeItem)*
+    /// AttributeArguments ::= "(" Expr ("," Expr)* ")"
     /// ```
+    const STARTERS_ATTRIBUTE_ARGUMENTS: TokenSet =
+        TokenSet::from_kinds_and_sets(&[TokenKind::LeftParen], &[]);
     fn parse_attribute_arguments(&mut self, recovery: &TokenSet) -> MarkClosed {
         self.with(CSTTreeKind::AttributeArguments, |this| {
             this.expect_bracket_group(
@@ -219,26 +220,24 @@ impl<'a> CSTParser<'a> {
                 |this, recovery| {
                     this.expect_sequence(
                         "an attribute argument",
-                        &Self::STARTERS_ATTRIBUTE_ITEM,
+                        &Self::STARTERS_EXPR,
                         recovery,
                         &TokenSet::from(TokenKind::RightParen),
                         Some(TokenKind::Comma),
                         false,
                         false,
                         false,
-                        &Self::parse_attribute_item,
+                        &Self::parse_expr,
                     );
                 },
             );
         })
     }
 
-    const STARTERS_ATTRIBUTE_ITEM: TokenSet =
+    const STARTERS_EXPR: TokenSet =
         TokenSet::from_kinds_and_sets(&[], &[&Self::STARTERS_ATOM]);
-    fn parse_attribute_item(&mut self, recovery: &TokenSet) -> MarkClosed {
-        self.with(CSTTreeKind::AttributeItem, |this| {
-            this.parse_atom(recovery);
-        })
+    fn parse_expr(&mut self, recovery: &TokenSet) -> MarkClosed {
+        self.parse_atom(recovery)
     }
 
     const STARTERS_ATOM: TokenSet = TokenSet::from_kinds_and_sets(
@@ -260,18 +259,50 @@ impl<'a> CSTParser<'a> {
             | TokenKind::Float
             | TokenKind::True
             | TokenKind::False
-            | TokenKind::Null => self.with(CSTTreeKind::Literal, |this| {
+            | TokenKind::Null => self.with(CSTTreeKind::Atom, |this| {
                 this.advance();
             }),
 
-            TokenKind::StringStart => {
-                todo!("string parsing")
-            }
+            TokenKind::StringStart => self.parse_string(recovery),
 
             _ => self.with(CSTTreeKind::Error, |this| {
                 this.expect_any("an atom", &Self::STARTERS_ATOM, recovery);
             }),
         }
+    }
+
+    const STARTERS_STRING_PART: TokenSet = TokenSet::from_kinds_and_sets(
+        &[TokenKind::StringText, TokenKind::StringExprStart],
+        &[],
+    );
+    fn parse_string(&mut self, recovery: &TokenSet) -> MarkClosed {
+        self.with(CSTTreeKind::String, |this| {
+            this.expect(TokenKind::StringStart, recovery);
+            this.expect_sequence(
+                "a string part",
+                &Self::STARTERS_STRING_PART,
+                recovery,
+                &TokenSet::from(TokenKind::StringEnd),
+                None,
+                false,
+                false,
+                false,
+                |this, recovery| match this.current() {
+                    TokenKind::StringText => {
+                        this.advance();
+                    }
+                    TokenKind::StringExprStart => {
+                        this.with(CSTTreeKind::StringInterpolatedExpr, |this| {
+                            this.advance();
+                            this.parse_expr(&recovery.union(TokenKind::StringExprEnd));
+                            this.expect(TokenKind::StringExprEnd, recovery);
+                        });
+                    }
+                    _ => unreachable!("unexpected token"),
+                },
+            );
+            this.expect(TokenKind::StringEnd, recovery);
+        })
     }
 
     fn expect_bracket_group<F>(
