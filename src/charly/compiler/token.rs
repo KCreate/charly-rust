@@ -20,6 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+use crate::charly::compiler::tokenset::TokenSet;
 use crate::charly::utils::diagnostics::DiagnosticLocation;
 use casey::lower;
 use std::fmt::{Display, Formatter};
@@ -92,19 +93,29 @@ macro_rules! define_tokens {
             __COUNT
         }
 
-        pub static TOKEN_ALL: &[TokenKind] = &[
+        pub static TOKEN_LIST_ALL: &[TokenKind] = &[
             $( TokenKind::$bare_variant, )*
             $( TokenKind::$kw_variant, )*
             $( TokenKind::$punct_variant, )*
         ];
 
-        pub static TOKEN_KEYWORDS: &[TokenKind] = &[
+        pub static TOKEN_ALL: TokenSet = TokenSet::from_kinds(&[
+            $( TokenKind::$bare_variant, )*
             $( TokenKind::$kw_variant, )*
-        ];
-
-        pub static TOKEN_PUNCTUATORS: &[TokenKind] = &[
             $( TokenKind::$punct_variant, )*
-        ];
+        ]);
+
+        pub static TOKEN_BARE: TokenSet = TokenSet::from_kinds(&[
+            $( TokenKind::$kw_variant, )*
+        ]);
+
+        pub static TOKEN_KEYWORDS: TokenSet = TokenSet::from_kinds(&[
+            $( TokenKind::$kw_variant, )*
+        ]);
+
+        pub static TOKEN_PUNCTUATORS: TokenSet = TokenSet::from_kinds(&[
+            $( TokenKind::$punct_variant, )*
+        ]);
 
         pub static TOKEN_MAX_STR_LEN: usize = max_str_len!(
             $( $punct_text, )*
@@ -290,80 +301,119 @@ define_tokens! {
         QuestionMark => "?",
         QuestionMarkDot => "?.",
         QuestionMarkColon => "?:",
-        RangeInclusive => "..=",
+        RangeExclusive => "..<",
     },
 }
 
+pub const TOKEN_INFIX_OPERATORS: TokenSet = TokenSet::from_kinds(&[
+    TokenKind::DoublePipe,
+    TokenKind::And,
+    TokenKind::Pipe,
+    TokenKind::BitXor,
+    TokenKind::BitAnd,
+    TokenKind::Eq,
+    TokenKind::Neq,
+    TokenKind::Gt,
+    TokenKind::Gte,
+    TokenKind::Lt,
+    TokenKind::Lte,
+    TokenKind::BitLeftShift,
+    TokenKind::BitRightShift,
+    TokenKind::BitUnsignedRightShift,
+    TokenKind::Add,
+    TokenKind::Sub,
+    TokenKind::Mul,
+    TokenKind::Div,
+    TokenKind::Mod,
+    TokenKind::Pow,
+    TokenKind::Is,
+    TokenKind::In,
+    TokenKind::QuestionMarkColon,
+    TokenKind::RangeExclusive,
+    TokenKind::DoubleDot,
+]);
+
+pub const TOKEN_PREFIX_OPERATORS: TokenSet = TokenSet::from_kinds(&[
+    TokenKind::Await,
+    TokenKind::Add,
+    TokenKind::Sub,
+    TokenKind::Not,
+    TokenKind::BitNot,
+    TokenKind::TripleDot,
+]);
+
+pub const TOKEN_POSTFIX_OPERATORS: TokenSet =
+    TokenSet::from_kinds(&[TokenKind::DoubleNot]);
+
+pub const TOKEN_ASSIGN_INFIX_OPERATORS: TokenSet = TokenSet::from_kinds(&[
+    TokenKind::AssignAdd,
+    TokenKind::AssignSub,
+    TokenKind::AssignMul,
+    TokenKind::AssignDiv,
+    TokenKind::AssignMod,
+    TokenKind::AssignPow,
+    TokenKind::AssignBitOr,
+    TokenKind::AssignBitAnd,
+    TokenKind::AssignBitXor,
+    TokenKind::AssignBitLeftShift,
+    TokenKind::AssignBitRightShift,
+    TokenKind::AssignBitUnsignedRightShift,
+]);
+
+pub const TOKEN_OPENING_BRACKET: TokenSet = TokenSet::from_kinds(&[
+    TokenKind::LeftBrace,
+    TokenKind::LeftParen,
+    TokenKind::LeftBracket,
+]);
+
+pub const TOKEN_CLOSING_BRACKET: TokenSet = TokenSet::from_kinds(&[
+    TokenKind::RightBrace,
+    TokenKind::RightParen,
+    TokenKind::RightBracket,
+]);
+
+pub const TOKEN_WHITESPACE: TokenSet =
+    TokenSet::from_kinds(&[TokenKind::Whitespace, TokenKind::Newline]);
+
+pub const TOKEN_COMMENT: TokenSet = TokenSet::from_kinds(&[
+    TokenKind::SingleLineComment,
+    TokenKind::MultiLineComment,
+    TokenKind::DocComment,
+]);
+
 impl TokenKind {
-    //noinspection RsUnnecessaryQualifications
     pub fn is_infix_operator(&self) -> bool {
-        match self {
-            TokenKind::DoublePipe => true,
-            TokenKind::And => true,
-            TokenKind::Pipe => true,
-            TokenKind::BitXor => true,
-            TokenKind::BitAnd => true,
-            TokenKind::Eq => true,
-            TokenKind::Neq => true,
-            TokenKind::Gt => true,
-            TokenKind::Gte => true,
-            TokenKind::Lt => true,
-            TokenKind::Lte => true,
-            TokenKind::BitLeftShift => true,
-            TokenKind::BitRightShift => true,
-            TokenKind::BitUnsignedRightShift => true,
-            TokenKind::Add => true,
-            TokenKind::Sub => true,
-            TokenKind::Mul => true,
-            TokenKind::Div => true,
-            TokenKind::Mod => true,
-            TokenKind::Pow => true,
-            TokenKind::Is => true,
-            TokenKind::In => true,
-            TokenKind::QuestionMarkColon => true,
-            TokenKind::RangeInclusive => true,
-            TokenKind::DoubleDot => true,
-            _ => false,
-        }
+        TOKEN_INFIX_OPERATORS.has(*self)
     }
 
     //noinspection RsUnnecessaryQualifications
     pub fn is_prefix_operator(&self) -> bool {
-        match self {
-            TokenKind::Await => true,
-            TokenKind::Add => true,
-            TokenKind::Sub => true,
-            TokenKind::Not => true,
-            TokenKind::BitNot => true,
-            TokenKind::TripleDot => true,
-            _ => false,
-        }
+        TOKEN_PREFIX_OPERATORS.has(*self)
     }
 
     //noinspection RsUnnecessaryQualifications
     pub fn is_postfix_operator(&self) -> bool {
-        match self {
-            TokenKind::DoubleNot => true,
-            _ => false,
-        }
+        TOKEN_POSTFIX_OPERATORS.has(*self)
     }
 
     pub fn is_assign_infix_operator(&self) -> bool {
-        match self {
-            TokenKind::AssignAdd => true,
-            TokenKind::AssignSub => true,
-            TokenKind::AssignMul => true,
-            TokenKind::AssignDiv => true,
-            TokenKind::AssignMod => true,
-            TokenKind::AssignPow => true,
-            TokenKind::AssignBitOr => true,
-            TokenKind::AssignBitAnd => true,
-            TokenKind::AssignBitXor => true,
-            TokenKind::AssignBitLeftShift => true,
-            TokenKind::AssignBitRightShift => true,
-            TokenKind::AssignBitUnsignedRightShift => true,
-            _ => false,
-        }
+        TOKEN_ASSIGN_INFIX_OPERATORS.has(*self)
+    }
+
+    pub fn is_opening_bracket(&self) -> bool {
+        TOKEN_OPENING_BRACKET.has(*self)
+    }
+
+    pub fn is_closing_bracket(&self) -> bool {
+        TOKEN_CLOSING_BRACKET.has(*self)
+    }
+
+    pub fn is_whitespace(&self) -> bool {
+        TOKEN_WHITESPACE.has(*self)
+    }
+
+    pub fn is_comment(&self) -> bool {
+        TOKEN_COMMENT.has(*self)
     }
 
     pub fn matching_infix_operator(&self) -> TokenKind {
@@ -384,24 +434,6 @@ impl TokenKind {
         }
     }
 
-    pub fn is_opening_bracket(&self) -> bool {
-        match self {
-            TokenKind::LeftBrace => true,
-            TokenKind::LeftParen => true,
-            TokenKind::LeftBracket => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_closing_bracket(&self) -> bool {
-        match self {
-            TokenKind::RightBrace => true,
-            TokenKind::RightParen => true,
-            TokenKind::RightBracket => true,
-            _ => false,
-        }
-    }
-
     pub fn matching_bracket(&self) -> Option<TokenKind> {
         match self {
             TokenKind::LeftBrace => Some(TokenKind::RightBrace),
@@ -412,23 +444,6 @@ impl TokenKind {
             TokenKind::RightParen => Some(TokenKind::LeftParen),
             TokenKind::RightBracket => Some(TokenKind::LeftBracket),
             _ => None,
-        }
-    }
-
-    pub fn is_whitespace(&self) -> bool {
-        match self {
-            TokenKind::Whitespace => true,
-            TokenKind::Newline => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_comment(&self) -> bool {
-        match self {
-            TokenKind::SingleLineComment => true,
-            TokenKind::MultiLineComment => true,
-            TokenKind::DocComment => true,
-            _ => false,
         }
     }
 }

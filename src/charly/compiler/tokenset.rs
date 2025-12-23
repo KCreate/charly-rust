@@ -20,7 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use crate::charly::compiler::token::{TokenKind, TOKEN_ALL};
+use crate::charly::compiler::token::{TokenKind, TOKEN_ALL, TOKEN_LIST_ALL};
 use std::fmt::{Display, Formatter};
 
 const TOKEN_SET_BACKING_WORDS: usize = (TokenKind::TOKEN_KIND_COUNT + 63) / 64;
@@ -28,6 +28,26 @@ const TOKEN_SET_BACKING_WORDS: usize = (TokenKind::TOKEN_KIND_COUNT + 63) / 64;
 #[derive(Copy, Clone, Debug)]
 pub struct TokenSet {
     backing: [u64; TOKEN_SET_BACKING_WORDS],
+}
+
+pub struct TokenSetIter<'a> {
+    token_set: &'a TokenSet,
+    current_index: usize,
+}
+
+impl Iterator for TokenSetIter<'_> {
+    type Item = TokenKind;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.current_index < TokenKind::TOKEN_KIND_COUNT {
+            let kind = TOKEN_LIST_ALL[self.current_index];
+            self.current_index += 1;
+            if self.token_set.has(kind) {
+                return Some(kind);
+            }
+        }
+        None
+    }
 }
 
 impl TokenSet {
@@ -70,6 +90,12 @@ impl TokenSet {
         let backing_index = Self::token_kind_to_backing_index(kind);
         let backing_flag = Self::token_kind_to_backing_flag(kind);
         self.backing[backing_index] |= backing_flag;
+    }
+
+    pub const fn remove(&mut self, kind: TokenKind) {
+        let backing_index = Self::token_kind_to_backing_index(kind);
+        let backing_flag = Self::token_kind_to_backing_flag(kind);
+        self.backing[backing_index] &= !backing_flag;
     }
 
     pub const fn union(&self, other: TokenKind) -> TokenSet {
@@ -119,6 +145,13 @@ impl TokenSet {
     const fn token_kind_to_backing_flag(kind: TokenKind) -> u64 {
         1 << ((kind as u64) % 64)
     }
+
+    pub fn iter(&self) -> TokenSetIter<'_> {
+        TokenSetIter {
+            token_set: self,
+            current_index: 0,
+        }
+    }
 }
 
 impl From<TokenKind> for TokenSet {
@@ -130,8 +163,9 @@ impl From<TokenKind> for TokenSet {
 impl Display for TokenSet {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let string_formats = TOKEN_ALL
+            .clone()
             .iter()
-            .filter(|kind| self.has(**kind))
+            .filter(|kind| self.has(*kind))
             .map(|kind| match kind {
                 _ if kind.is_punctuator() => {
                     return format!("'{}'", kind.to_string());

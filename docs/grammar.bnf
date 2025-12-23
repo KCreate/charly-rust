@@ -267,16 +267,16 @@ TypeAnnotation ::= ":" Type
 // ------ Literals ------
 
 Atom ::= Id
-          | Number
-          | String
-          | "true" | "false"
-          | "null"
-          | LambdaLiteral
-          | "(" Expr ")"
-          | TupleLiteral
-          | ListLiteral
-          | MapLiteral
-          | Block
+       | Number
+       | String
+       | "true" | "false"
+       | "null"
+       | LambdaLiteral
+       | "(" Expr ")"
+       | TupleLiteral
+       | ListLiteral
+       | MapLiteral
+       | Block
 
 Id ::= "identifier"
 

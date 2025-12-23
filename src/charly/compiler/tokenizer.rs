@@ -1237,19 +1237,19 @@ mod tests {
     fn test_tokenize_keywords_and_punctuators() {
         // build the input source string
         let mut source_buf = String::new();
-        for keyword in TOKEN_KEYWORDS {
+        for keyword in TOKEN_KEYWORDS.iter() {
             source_buf.push_str(format!("{} ", keyword.to_string()).as_str());
         }
-        for punctuator in TOKEN_PUNCTUATORS {
+        for punctuator in TOKEN_PUNCTUATORS.iter() {
             source_buf.push_str(format!("{} ", punctuator.to_string()).as_str());
         }
 
         // build the expected list of tokens
         let mut expected_tokens: Vec<String> = Vec::new();
-        for keyword in TOKEN_KEYWORDS {
+        for keyword in TOKEN_KEYWORDS.iter() {
             expected_tokens.push(format!("{:?}", keyword));
         }
-        for punctuator in TOKEN_PUNCTUATORS {
+        for punctuator in TOKEN_PUNCTUATORS.iter() {
             expected_tokens.push(format!("{:?}", punctuator));
         }
 
