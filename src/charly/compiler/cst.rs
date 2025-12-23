@@ -39,8 +39,17 @@ pub enum CSTTreeKind {
     ImportPath,
     ImportAsItem,
 
+    // expressions
+    Expr,
+    PrefixOpExpr,
+    InfixOpExpr,
+    PostfixOpExpr,
+    MemberExpr,
+    NullableMemberExpr,
+
     // literals
     Atom,
+    Identifier,
     String,
     StringInterpolatedExpr,
 
@@ -91,7 +100,11 @@ pub struct CSTTree {
 
 impl CSTTree {
     pub fn location(&self) -> DiagnosticLocation {
-        assert!(self.children.len() > 0);
+        assert!(
+            self.children.len() > 0,
+            "CSTTree of kind {} has no children",
+            self.kind
+        );
         let start = self.children.first().unwrap().location();
         let end = self.children.last().unwrap().location();
         start.merge(&end)
