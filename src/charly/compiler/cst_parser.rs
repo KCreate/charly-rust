@@ -98,6 +98,7 @@ impl<'a> CSTParser<'a> {
                 false,
                 &Self::parse_top_level_item,
             );
+            this.expect(TokenKind::EndOfFile, &TokenSet::EMPTY);
         });
     }
 
@@ -805,7 +806,10 @@ impl<'a> CSTParser<'a> {
     }
 
     fn advance_token_stream(&mut self) {
-        assert!(!self.eof());
+        if self.eof() {
+            return;
+        }
+
         self.fuel.replenish();
         self.previous_pos_all = self.pos;
         self.pos += 1;
@@ -930,7 +934,7 @@ impl<'a> CSTParser<'a> {
         }
 
         assert_eq!(stack.len(), 1);
-        assert_eq!(tokens.next().unwrap().kind, TokenKind::EndOfFile);
+        assert!(tokens.next().is_none());
         stack.pop().unwrap()
     }
 }
