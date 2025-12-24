@@ -135,7 +135,8 @@ impl<'a> CSTParser<'a> {
         self.with(CSTTreeKind::ImportDecl, |this| {
             this.expect(TokenKind::Import, &recovery.union(TokenKind::As));
             this.parse_import_path(&recovery.union(TokenKind::As));
-            if this.advance_until(TokenKind::As, recovery) {
+            this.recover_until(TokenKind::As, recovery);
+            if this.at(TokenKind::As) {
                 this.with(CSTTreeKind::ImportAsItem, |this| {
                     this.expect(TokenKind::As, recovery);
                     this.expect(TokenKind::Identifier, recovery);
