@@ -785,7 +785,8 @@ impl<'a> CSTParser<'a> {
 
         let merged_set = expected_set.union_set(recovery);
         while !self.eof() && !self.is_at_any(&merged_set) {
-            self.event_token_skip();
+            self.event_token_advance();
+            self.skip_whitespace_and_comments();
         }
 
         self.at_any(expected_set)
