@@ -78,7 +78,7 @@ VarDeclTarget ::= NameDecl
 
 // ------ Typealias Declarations ------
 
-TypeAliasDecl ::= AttributeList? DeclMod* "typealias" Id GenericParamList? ("=" Type)?
+TypeAliasDecl ::= AttributeList? DeclMod* "typealias" Id GenericParamList? "=" Type
 
 // ------ Struct Declarations ------
 
@@ -252,7 +252,7 @@ PostfixMemberExpr ::= "." Id
 
 Type ::= TypePathItem ("." TypePathItem)* "?"
 
-TypePathItem ::= Id GenericArgumentList
+TypePathItem ::= Id GenericArgumentList?
 
 GenericParamList ::= "<" GenericParamItem* ">"
 
