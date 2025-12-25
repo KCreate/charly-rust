@@ -45,6 +45,8 @@ ImportAsItem ::= "as" Id
 
 // ------ Declarations ------
 
+DeclModList ::= DeclMod*
+
 DeclMod ::= "export"
           | "internal"
           | "public"
@@ -54,11 +56,11 @@ DeclMod ::= "export"
 
 // ------ Function Declaration ------
 
-FnDecl ::= AttributeList? DeclMod* "fn" Id GenericParamList? FnParamList? FnReturnAnnot? FnBody
+FnDecl ::= AttributeList? DeclModList? "fn" Id GenericParamList? FnParamList? FnReturnAnnot? FnBody
 
 FnParamList ::= "(" FnParam* ")"
 
-FnParam ::= "..."? NameDecl
+FnParam ::= AttributeList* "..."? NameDecl
 
 FnReturnAnnot ::= "->" Type
 
@@ -71,18 +73,18 @@ FnBlockBody ::= Block
 
 // ------ Variable Declarations ------
 
-VarDecl ::= AttributeList? DeclMod* ("const" | "let") VarDeclTarget ("=" Expr)?
+VarDecl ::= AttributeList? DeclModList? ("const" | "let") VarDeclTarget ("=" Expr)?
 
 VarDeclTarget ::= NameDecl
                 | UnpackTarget
 
 // ------ Typealias Declarations ------
 
-TypeAliasDecl ::= AttributeList? DeclMod* "typealias" Id GenericParamList? "=" Type
+TypeAliasDecl ::= AttributeList? DeclModList? "typealias" Id GenericParamList? "=" Type
 
 // ------ Struct Declarations ------
 
-StructDecl ::= AttributeList? DeclMod* "struct" Id GenericParamList? StructBody
+StructDecl ::= AttributeList? DeclModList? "struct" Id GenericParamList? StructBody
 
 StructBody ::= "{" StructItem* "}"
 
@@ -91,7 +93,7 @@ StructItem ::= VarDecl
 
 // ------ Interface Declarations ------
 
-InterfaceDecl ::= AttributeList? DeclMod* "interface" Id GenericParamList? InterfaceExtends* InterfaceBody
+InterfaceDecl ::= AttributeList? DeclModList? "interface" Id GenericParamList? InterfaceExtends* InterfaceBody
 
 InterfaceExtends ::= "extends" Type*
 
@@ -102,20 +104,20 @@ InterfaceItem ::= FnDecl
 
 // ------ Union Declarations ------
 
-UnionDecl ::= AttributeList? DeclMod* "union" GenericParamList? UnionBody
+UnionDecl ::= AttributeList? DeclModList? "union" GenericParamList? UnionBody
 
 UnionBody ::= "{" UnionItem* "}"
 
 UnionItem ::= Id UnionItemParams?
 
-UnionItemParams ::= "(" NameDecl* ")"
+UnionItemParams ::= "(" (AttributeList* NameDecl)* ")"
 
 // ------ Enum Declarations ------
 
-EnumDecl ::= AttributeList? DeclMod* "enum" EnumHeader EnumBody
+EnumDecl ::= AttributeList? DeclModList? "enum" EnumHeader EnumBody
 
-EnumHeader ::= Id TypeAnnotation
-             | "flags" Id TypeAnnotation?
+EnumHeader ::= NameDecl
+             | "flags" NameDecl
 
 EnumBody ::= "{" EnumItem* "}"
 
@@ -250,13 +252,11 @@ PostfixMemberExpr ::= "." Id
 
 // ------ Types ------
 
-Type ::= TypePathItem ("." TypePathItem)* "?"
-
-TypePathItem ::= Id GenericArgumentList?
+Type ::= Expr
 
 GenericParamList ::= "<" GenericParamItem* ">"
 
-GenericParamItem ::= Id (":" Type ("&" Type)*)?
+GenericParamItem ::= Id (":" Type)?
 
 GenericArgumentList ::= "<" Type* ">"
 
@@ -323,7 +323,7 @@ StringExprEnd ::= "}"
 
 LambdaLiteral ::= "->" LambdaParameterDecl? BlockOrExpr
 
-LambdaParameterDecl ::= "|" NameDecl* "|" TypeAnnotation?
+LambdaParameterDecl ::= "|" FnParam* "|" TypeAnnotation?
 
 TupleLiteral ::= "(" ")"
                | "(" Expr "," ")"
@@ -341,8 +341,7 @@ Boolean ::= "true"
 UnpackTarget ::= "(" UnpackTargetItem* ")"
                | "{" UnpackTargetItem* "}"
 
-UnpackTargetItem ::= Id
-                   | Expr
+UnpackTargetItem ::= Expr
                    | "..."
 
 ConditionTarget ::= Expr
