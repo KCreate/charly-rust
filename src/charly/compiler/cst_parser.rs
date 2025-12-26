@@ -520,6 +520,10 @@ impl<'a> CSTParser<'a> {
                     break;
                 }
 
+                if recovery.has(self.current()) {
+                    break;
+                }
+
                 if self.current().is_assign_operator() && !allow_assignment {
                     break;
                 }
@@ -863,9 +867,13 @@ impl<'a> CSTParser<'a> {
             child_recovery = child_recovery.union(separator)
         }
 
-        let effective_recovery_set = terminator_set
+        let mut effective_recovery_set = terminator_set
             .union_set(recovery)
             .without_set(&effective_starter_set);
+
+        if let Some(separator) = separator_token {
+            effective_recovery_set = effective_recovery_set.without(separator);
+        }
 
         let mut iteration_count = 0;
 
