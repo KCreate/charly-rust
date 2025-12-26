@@ -446,7 +446,26 @@ impl<'a> CSTParser<'a> {
         self.with(CSTTreeKind::TypeExprPart, |this| {
             this.expect(TokenKind::Identifier, &recovery.union(TokenKind::Lt));
             if this.recovers_at(TokenKind::Lt, recovery) {
-                todo!("generic argument list parsing not implemented yet");
+                this.with(CSTTreeKind::GenericArgumentExpr, |this| {
+                    this.expect_bracket_group(
+                        CSTTreeKind::AngleBracketGroup,
+                        recovery,
+                        |this, recovery| {
+                            this.expect_sequence(
+                                "a type expression",
+                                &Self::STARTERS_TYPE,
+                                recovery,
+                                recovery,
+                                Some(TokenKind::Comma),
+                                false,
+                                false,
+                                false,
+                                true,
+                                &Self::parse_expr,
+                            );
+                        },
+                    );
+                });
             }
         })
     }
@@ -543,6 +562,54 @@ impl<'a> CSTParser<'a> {
                             this.expect(TokenKind::QuestionMarkDot, recovery);
                             this.expect(TokenKind::Identifier, recovery);
                         });
+                }
+                TokenKind::LeftParen => {
+                    lhs = self.with_before(CSTTreeKind::CallExpr, &lhs, |this| {
+                        this.expect_bracket_group(
+                            CSTTreeKind::ParenGroup,
+                            recovery,
+                            |this, recovery| {
+                                this.expect_sequence(
+                                    "a call argument",
+                                    &Self::STARTERS_EXPR,
+                                    recovery,
+                                    recovery,
+                                    Some(TokenKind::Comma),
+                                    false,
+                                    false,
+                                    false,
+                                    false,
+                                    &Self::parse_expr,
+                                );
+                            },
+                        );
+                    });
+                }
+                TokenKind::Lt => {
+                    lhs = self.with_before(
+                        CSTTreeKind::GenericArgumentExpr,
+                        &lhs,
+                        |this| {
+                            this.expect_bracket_group(
+                                CSTTreeKind::AngleBracketGroup,
+                                recovery,
+                                |this, recovery| {
+                                    this.expect_sequence(
+                                        "a type expression",
+                                        &Self::STARTERS_TYPE,
+                                        recovery,
+                                        recovery,
+                                        Some(TokenKind::Comma),
+                                        false,
+                                        false,
+                                        false,
+                                        true,
+                                        &Self::parse_expr,
+                                    );
+                                },
+                            );
+                        },
+                    );
                 }
                 _ => return lhs,
             }

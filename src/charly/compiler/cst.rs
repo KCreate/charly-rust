@@ -61,6 +61,8 @@ pub enum CSTTreeKind {
     PostfixOpExpr,
     MemberExpr,
     NullableMemberExpr,
+    CallExpr,
+    GenericArgumentExpr,
 
     // literals
     Atom,
