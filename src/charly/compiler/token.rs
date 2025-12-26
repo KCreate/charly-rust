@@ -117,7 +117,7 @@ macro_rules! define_tokens {
             $( TokenKind::$punct_variant, )*
         ]);
 
-        pub static TOKEN_MAX_STR_LEN: usize = max_str_len!(
+        pub static TOKEN_PUNCT_MAX_STR_LEN: usize = max_str_len!(
             $( $punct_text, )*
         );
 
@@ -199,6 +199,7 @@ define_tokens! {
         StringText,
         StringExprStart,
         StringExprEnd,
+        AsQuestionMark,
     },
     keywords: {
         As,
@@ -306,6 +307,8 @@ define_tokens! {
 }
 
 pub const TOKEN_INFIX_OPERATORS: TokenSet = TokenSet::from_kinds(&[
+    TokenKind::As,
+    TokenKind::AsQuestionMark,
     TokenKind::DoublePipe,
     TokenKind::And,
     TokenKind::Pipe,
@@ -346,7 +349,6 @@ pub const TOKEN_POSTFIX_OPERATORS: TokenSet =
     TokenSet::from_kinds(&[TokenKind::DoubleNot]);
 
 pub const TOKEN_ASSIGN_INFIX_OPERATORS: TokenSet = TokenSet::from_kinds(&[
-    TokenKind::Assign,
     TokenKind::AssignAdd,
     TokenKind::AssignSub,
     TokenKind::AssignMul,
@@ -395,6 +397,10 @@ impl TokenKind {
     //noinspection RsUnnecessaryQualifications
     pub fn is_postfix_operator(&self) -> bool {
         TOKEN_POSTFIX_OPERATORS.has(*self)
+    }
+
+    pub fn is_assign_operator(&self) -> bool {
+        *self == TokenKind::Assign || TOKEN_ASSIGN_INFIX_OPERATORS.has(*self)
     }
 
     pub fn is_assign_infix_operator(&self) -> bool {

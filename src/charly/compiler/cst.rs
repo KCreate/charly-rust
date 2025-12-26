@@ -54,6 +54,7 @@ pub enum CSTTreeKind {
 
     // expressions
     TypeExpr,
+    TypeExprPart,
     Expr,
     PrefixOpExpr,
     InfixOpExpr,

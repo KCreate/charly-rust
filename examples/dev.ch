@@ -1,3 +1,11 @@
 #!/usr/bin/env charly
 
-let foo: i32 = 42 as i32 + 100
+let foo: i32 = null
+let foo: std.collections.Map = null
+let foo: i32? = null
+let foo = [
+    10 as i32,
+    10 is i32,
+    10 is i32?,
+    10 in foo,
+]

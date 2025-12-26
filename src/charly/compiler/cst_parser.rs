@@ -244,8 +244,8 @@ impl<'a> CSTParser<'a> {
             );
             this.parse_var_decl_target(&recovery.union(TokenKind::Assign));
             if this.recovers_at(TokenKind::Assign, recovery) {
+                this.expect(TokenKind::Assign, recovery);
                 this.with(CSTTreeKind::VarDeclValue, |this| {
-                    this.expect(TokenKind::Assign, recovery);
                     this.parse_expr(recovery);
                 });
             }
@@ -412,11 +412,42 @@ impl<'a> CSTParser<'a> {
         })
     }
 
+    /// ```bnf
+    /// Type ::= TypePart ("." TypePart)* "?"
+    /// ```
     const STARTERS_TYPE: TokenSet =
-        TokenSet::from_kinds_and_sets(&[], &[&Self::STARTERS_EXPR]);
+        TokenSet::from_kinds_and_sets(&[], &[&Self::STARTERS_TYPE_PART]);
     fn parse_type(&mut self, recovery: &TokenSet) -> MarkClosed {
         self.with(CSTTreeKind::TypeExpr, |this| {
-            this.parse_expr_rec(0, false, recovery);
+            this.expect_sequence(
+                "a type part",
+                &Self::STARTERS_TYPE_PART,
+                &recovery.union(TokenKind::QuestionMark),
+                recovery,
+                Some(TokenKind::Dot),
+                true,
+                false,
+                false,
+                true,
+                &Self::parse_type_part,
+            );
+            if this.recovers_at(TokenKind::QuestionMark, recovery) {
+                this.advance();
+            }
+        })
+    }
+
+    /// ```bnf
+    /// TypePart ::= Id GenericArgumentList?
+    /// ```
+    const STARTERS_TYPE_PART: TokenSet =
+        TokenSet::from_kinds_and_sets(&[TokenKind::Identifier], &[]);
+    fn parse_type_part(&mut self, recovery: &TokenSet) -> MarkClosed {
+        self.with(CSTTreeKind::TypeExprPart, |this| {
+            this.expect(TokenKind::Identifier, &recovery.union(TokenKind::Lt));
+            if this.recovers_at(TokenKind::Lt, recovery) {
+                todo!("generic argument list parsing not implemented yet");
+            }
         })
     }
 
@@ -470,24 +501,20 @@ impl<'a> CSTParser<'a> {
                     break;
                 }
 
-                if self.current().is_assign_infix_operator() && !allow_assignment {
+                if self.current().is_assign_operator() && !allow_assignment {
                     break;
                 }
 
                 lhs = self.with_before(CSTTreeKind::InfixOpExpr, &lhs, |this| {
-                    // let operator = this.advance();
-                    // match operator {
-                    //     TokenKind::As | TokenKind::Is => {
-                    //         this.with(CSTTreeKind::TypeExpr, |this| {
-                    //             this.parse_expr_rec(right_bp, allow_assignment, recovery);
-                    //         });
-                    //     }
-                    //     _ => {
-                    //         this.parse_expr_rec(right_bp, allow_assignment, recovery);
-                    //     }
-                    // }
-                    this.advance();
-                    this.parse_expr_rec(right_bp, allow_assignment, recovery);
+                    let operator = this.advance();
+                    match operator {
+                        TokenKind::As | TokenKind::Is => {
+                            this.parse_type(recovery);
+                        }
+                        _ => {
+                            this.parse_expr_rec(right_bp, allow_assignment, recovery);
+                        }
+                    }
                 });
 
                 continue;
@@ -543,11 +570,9 @@ impl<'a> CSTParser<'a> {
 
             TokenKind::Eq | TokenKind::Neq => Some((3, 4)),
 
-            TokenKind::Lt
-            | TokenKind::Gt
-            | TokenKind::Lte
-            | TokenKind::Gte
-            | TokenKind::Is => Some((4, 5)),
+            TokenKind::Lt | TokenKind::Gt | TokenKind::Lte | TokenKind::Gte => {
+                Some((4, 5))
+            }
 
             // right-associative
             TokenKind::QuestionMarkColon => Some((6, 5)),
@@ -568,7 +593,9 @@ impl<'a> CSTParser<'a> {
             | TokenKind::BitRightShift
             | TokenKind::BitUnsignedRightShift => Some((13, 14)),
 
-            TokenKind::As | TokenKind::In => Some((14, 15)),
+            TokenKind::As | TokenKind::AsQuestionMark | TokenKind::In | TokenKind::Is => {
+                Some((14, 15))
+            }
 
             _ => None,
         }

@@ -62,7 +62,7 @@ FnParamList ::= "(" FnParam* ")"
 
 FnParam ::= AttributeList* "..."? NameDecl
 
-FnReturnAnnot ::= "->" Type
+FnReturnAnnot ::= "->" TypeExpr
 
 FnBody ::= FnExprBody
          | FnBlockBody
@@ -80,7 +80,7 @@ VarDeclTarget ::= NameDecl
 
 // ------ Typealias Declarations ------
 
-TypeAliasDecl ::= AttributeList? DeclModList? "typealias" Id GenericParamList? "=" Type
+TypeAliasDecl ::= AttributeList? DeclModList? "typealias" Id GenericParamList? "=" TypeExpr
 
 // ------ Struct Declarations ------
 
@@ -95,7 +95,7 @@ StructItem ::= VarDecl
 
 InterfaceDecl ::= AttributeList? DeclModList? "interface" Id GenericParamList? InterfaceExtends* InterfaceBody
 
-InterfaceExtends ::= "extends" Type*
+InterfaceExtends ::= "extends" TypeExpr*
 
 InterfaceBody ::= "{" InterfaceItem* "}"
 
@@ -130,9 +130,9 @@ ImplDecl ::= AttributeList? "impl" GenericParamList? ImplTarget ImplBody
 ImplTarget ::= ImplTypeTarget
              | ImplInterfaceTarget
 
-ImplTypeTarget ::= Type
+ImplTypeTarget ::= TypeExpr
 
-ImplInterfaceTarget ::= Type "for" Type
+ImplInterfaceTarget ::= TypeExpr "for" TypeExpr
 
 ImplBody ::= "{" ImplItem* "}"
 
@@ -198,7 +198,7 @@ MatchPatternTuple ::= TupleLiteral
 
 MatchPatternExpr ::= Expr
 
-MatchPatternIs ::= "is" Type UnpackTarget?
+MatchPatternIs ::= "is" TypeExpr UnpackTarget?
 
 MatchPatternIn ::= "in" Expr
 
@@ -227,7 +227,7 @@ Expr ::= Expr InfixOp Expr
        | PrefixOp Expr
        | Expr PostfixOp
        | Expr PostfixExpr
-       | Expr ("as" | "as?") Type
+       | Expr ("as" | "as?") TypeExpr
        | IfStmt
        | MatchStmt
        | SelectStmt
@@ -252,17 +252,19 @@ PostfixMemberExpr ::= "." Id
 
 // ------ Types ------
 
-Type ::= Expr
+TypeExpr ::= TypeExprPart ("." TypeExprPart)* "?"
+
+TypeExprPart ::= Id GenericArgumentList?
 
 GenericParamList ::= "<" GenericParamItem* ">"
 
-GenericParamItem ::= Id (":" Type)?
+GenericParamItem ::= Id (":" TypeExpr)?
 
-GenericArgumentList ::= "<" Type* ">"
+GenericArgumentList ::= "<" TypeExpr* ">"
 
 NameDecl ::= Id TypeAnnotation?
 
-TypeAnnotation ::= ":" Type
+TypeAnnotation ::= ":" TypeExpr
 
 // ------ Literals ------
 
@@ -345,7 +347,7 @@ UnpackTargetItem ::= Expr
                    | "..."
 
 ConditionTarget ::= Expr
-                  | ("const" | "let") Type UnpackTarget? "=" Expr
+                  | ("const" | "let") TypeExpr UnpackTarget? "=" Expr
 
 AttributeList ::= Attribute*
 

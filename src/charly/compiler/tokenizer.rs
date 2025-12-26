@@ -21,7 +21,8 @@
 // SOFTWARE.
 
 use crate::charly::compiler::token::{
-    IntegerBaseSpecifier, NumberSuffix, Token, TokenKind, TokenValue, TOKEN_MAX_STR_LEN,
+    IntegerBaseSpecifier, NumberSuffix, Token, TokenKind, TokenValue,
+    TOKEN_PUNCT_MAX_STR_LEN,
 };
 use crate::charly::utils::diagnostics::{DiagnosticContext, DiagnosticLocation, FileId};
 use crate::charly::utils::fuel_store::FuelStore;
@@ -118,6 +119,13 @@ impl<'a> Tokenizer<'a> {
             return;
         }
 
+        // as? operator
+        if let Some("as?") = self.buffer.peek_str_with_length(3) {
+            assert!(self.buffer.eat_str("as?"));
+            self.emit_token(TokenKind::AsQuestionMark);
+            return;
+        }
+
         match char {
             // LF line separator
             '\n' => {
@@ -173,7 +181,7 @@ impl<'a> Tokenizer<'a> {
         }
 
         // punctuation tokens
-        for n in (1..=TOKEN_MAX_STR_LEN).rev() {
+        for n in (1..=TOKEN_PUNCT_MAX_STR_LEN).rev() {
             let Some(lookahead) = self.buffer.peek_str_with_length(n) else {
                 continue;
             };
