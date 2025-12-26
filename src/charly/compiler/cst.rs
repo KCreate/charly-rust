@@ -33,6 +33,19 @@ pub enum CSTTreeKind {
     Program,
     TopLevelItem,
 
+    // declaration misc.
+    NodeWithDeclModifiers,
+    DeclModifiers,
+    NameDecl,
+    UnpackTargetSequence,
+    UnpackTargetAccess,
+    UnpackTargetItem,
+
+    // variable declarations
+    VarDecl,
+    VarDeclTarget,
+    VarDeclValue,
+
     // import declarations
     ImportDecl,
     ImportTarget,
@@ -40,6 +53,7 @@ pub enum CSTTreeKind {
     ImportAsItem,
 
     // expressions
+    TypeExpr,
     Expr,
     PrefixOpExpr,
     InfixOpExpr,

@@ -346,6 +346,7 @@ pub const TOKEN_POSTFIX_OPERATORS: TokenSet =
     TokenSet::from_kinds(&[TokenKind::DoubleNot]);
 
 pub const TOKEN_ASSIGN_INFIX_OPERATORS: TokenSet = TokenSet::from_kinds(&[
+    TokenKind::Assign,
     TokenKind::AssignAdd,
     TokenKind::AssignSub,
     TokenKind::AssignMul,

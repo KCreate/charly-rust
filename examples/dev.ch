@@ -1,6 +1,3 @@
 #!/usr/bin/env charly
 
-""
-"hello world"
-"hello {name}"
-"hello { "leonard" }"
+let foo: i32 = 42 as i32 + 100

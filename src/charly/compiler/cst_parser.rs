@@ -95,6 +95,7 @@ impl<'a> CSTParser<'a> {
                 None,
                 false,
                 true,
+                true,
                 false,
                 &Self::parse_top_level_item,
             );
@@ -116,12 +117,21 @@ impl<'a> CSTParser<'a> {
     /// ```
     const STARTERS_TOP_LEVEL_ITEM: TokenSet = TokenSet::from_kinds_and_sets(
         &[],
-        &[&Self::STARTERS_IMPORT_DECL, &Self::STARTERS_EXPR],
+        &[
+            &Self::STARTERS_IMPORT_DECL,
+            &Self::STARTERS_VAR_DECL,
+            &Self::STARTERS_EXPR,
+        ],
     );
     fn parse_top_level_item(&mut self, recovery: &TokenSet) -> MarkClosed {
         self.with(CSTTreeKind::TopLevelItem, |this| {
             match this.current() {
-                TokenKind::Import => this.parse_import_decl(recovery),
+                kind if Self::STARTERS_IMPORT_DECL.has(kind) => {
+                    this.parse_import_decl(recovery)
+                }
+                kind if Self::STARTERS_VAR_DECL.has(kind) => {
+                    this.parse_var_decl(recovery)
+                }
                 _ => this.parse_expr(recovery),
             };
         })
@@ -136,8 +146,7 @@ impl<'a> CSTParser<'a> {
         self.with(CSTTreeKind::ImportDecl, |this| {
             this.expect(TokenKind::Import, &recovery.union(TokenKind::As));
             this.parse_import_path(&recovery.union(TokenKind::As));
-            this.recover_until(TokenKind::As, recovery);
-            if this.at(TokenKind::As) {
+            if this.recovers_at(TokenKind::As, recovery) {
                 this.with(CSTTreeKind::ImportAsItem, |this| {
                     this.expect(TokenKind::As, recovery);
                     this.expect(TokenKind::Identifier, recovery);
@@ -161,6 +170,7 @@ impl<'a> CSTParser<'a> {
                 Some(TokenKind::Dot),
                 true,
                 false,
+                false,
                 true,
                 |this, recovery| {
                     this.expect_any(
@@ -170,6 +180,168 @@ impl<'a> CSTParser<'a> {
                     );
                 },
             );
+        })
+    }
+
+    /// ```bnf
+    /// DeclModList ::= DeclMod*
+    ///
+    /// DeclMod ::= "export"
+    ///           | "internal"
+    ///           | "public"
+    ///           | "private"
+    ///           | "static"
+    ///           | "final"
+    /// ```
+    const STARTERS_DECL_MOD_LIST: TokenSet = TokenSet::from_kinds(&[
+        TokenKind::Export,
+        TokenKind::Internal,
+        TokenKind::Public,
+        TokenKind::Private,
+        TokenKind::Static,
+        TokenKind::Final,
+    ]);
+    fn parse_decl_mod_list(
+        &mut self,
+        starter_set: &TokenSet,
+        recovery: &TokenSet,
+    ) -> MarkClosed {
+        self.with(CSTTreeKind::DeclModifiers, |this| {
+            this.expect_sequence(
+                "a declaration modifier",
+                &Self::STARTERS_DECL_MOD_LIST,
+                recovery,
+                starter_set,
+                None,
+                false,
+                false,
+                false,
+                false,
+                |this, _| match this.current() {
+                    TokenKind::Export
+                    | TokenKind::Internal
+                    | TokenKind::Public
+                    | TokenKind::Private
+                    | TokenKind::Static
+                    | TokenKind::Final => this.advance(),
+                    _ => unreachable!("unexpected token"),
+                },
+            )
+        })
+    }
+
+    /// ```bnf
+    /// VarDecl ::= AttributeList? DeclMod* ("const" | "let") VarDeclTarget ("=" Expr)?
+    /// ```
+    const STARTERS_VAR_DECL: TokenSet =
+        TokenSet::from_kinds_and_sets(&[TokenKind::Const, TokenKind::Let], &[]);
+    fn parse_var_decl(&mut self, recovery: &TokenSet) -> MarkClosed {
+        self.with(CSTTreeKind::VarDecl, |this| {
+            this.expect_any(
+                "variable declaration keyword",
+                &TokenSet::from_kinds(&[TokenKind::Const, TokenKind::Let]),
+                recovery,
+            );
+            this.parse_var_decl_target(&recovery.union(TokenKind::Assign));
+            if this.recovers_at(TokenKind::Assign, recovery) {
+                this.with(CSTTreeKind::VarDeclValue, |this| {
+                    this.expect(TokenKind::Assign, recovery);
+                    this.parse_expr(recovery);
+                });
+            }
+        })
+    }
+
+    /// ```bnf
+    /// VarDeclTarget ::= NameDecl
+    ///                 | UnpackTarget
+    /// ```
+    const STARTERS_VAR_DECL_TARGET: TokenSet = TokenSet::from_kinds(&[
+        TokenKind::Identifier,
+        TokenKind::LeftParen,
+        TokenKind::LeftBrace,
+    ]);
+    fn parse_var_decl_target(&mut self, recovery: &TokenSet) -> MarkClosed {
+        self.with(CSTTreeKind::VarDeclTarget, |this| match this.current() {
+            TokenKind::Identifier => {
+                this.parse_name_decl(recovery);
+            }
+            kind if Self::STARTERS_UNPACK_TARGET.has(kind) => {
+                this.parse_unpack_target(recovery);
+            }
+            _ => {
+                this.with(CSTTreeKind::Error, |this| {
+                    this.expect_any(
+                        "a variable declaration target",
+                        &Self::STARTERS_VAR_DECL_TARGET,
+                        recovery,
+                    );
+                });
+            }
+        })
+    }
+
+    /// ```bnf
+    /// UnpackTarget ::= "(" UnpackTargetItem* ")"
+    ///                | "{" UnpackTargetItem* "}"
+    ///
+    /// UnpackTargetItem ::= Expr
+    ///                    | "..."
+    /// ```
+    const STARTERS_UNPACK_TARGET: TokenSet =
+        TokenSet::from_kinds(&[TokenKind::LeftParen, TokenKind::LeftBrace]);
+    fn parse_unpack_target(&mut self, recovery: &TokenSet) -> MarkClosed {
+        let (bracket_group, tree_wrap_kind) = match self.current() {
+            TokenKind::LeftParen => {
+                (CSTTreeKind::ParenGroup, CSTTreeKind::UnpackTargetSequence)
+            }
+            TokenKind::LeftBrace => {
+                (CSTTreeKind::BraceGroup, CSTTreeKind::UnpackTargetAccess)
+            }
+            _ => unreachable!("unexpected token"),
+        };
+
+        self.with(tree_wrap_kind, |this| {
+            this.expect_bracket_group(bracket_group, recovery, |this, recovery| {
+                this.expect_sequence(
+                    "an unpack target item",
+                    &TokenSet::from_kinds(&[TokenKind::TripleDot])
+                        .union_set(&Self::STARTERS_EXPR),
+                    recovery,
+                    recovery,
+                    Some(TokenKind::Comma),
+                    false,
+                    false,
+                    false,
+                    false,
+                    |this, recovery| {
+                        this.with(CSTTreeKind::UnpackTargetItem, |this| {
+                            match this.current() {
+                                TokenKind::TripleDot => {
+                                    this.advance();
+                                }
+                                _ => {
+                                    this.parse_expr(recovery);
+                                }
+                            }
+                        })
+                    },
+                );
+            });
+        })
+    }
+
+    /// ```bnf
+    /// NameDecl ::= Id TypeAnnotation?
+    /// ```
+    const STARTERS_NAME_DECL: TokenSet = TokenSet::from_kinds(&[TokenKind::Identifier]);
+    fn parse_name_decl(&mut self, recovery: &TokenSet) -> MarkClosed {
+        self.with(CSTTreeKind::NameDecl, |this| {
+            this.expect(TokenKind::Identifier, &recovery.union(TokenKind::Colon));
+            if this.recovers_at(TokenKind::Colon, recovery) {
+                this.advance();
+                this.parse_type(recovery);
+            }
         })
     }
 
@@ -188,6 +360,7 @@ impl<'a> CSTParser<'a> {
                 recovery,
                 terminator_set,
                 None,
+                false,
                 false,
                 false,
                 false,
@@ -231,10 +404,19 @@ impl<'a> CSTParser<'a> {
                         false,
                         false,
                         false,
+                        false,
                         &Self::parse_expr,
                     );
                 },
             );
+        })
+    }
+
+    const STARTERS_TYPE: TokenSet =
+        TokenSet::from_kinds_and_sets(&[], &[&Self::STARTERS_EXPR]);
+    fn parse_type(&mut self, recovery: &TokenSet) -> MarkClosed {
+        self.with(CSTTreeKind::TypeExpr, |this| {
+            this.parse_expr_rec(0, false, recovery);
         })
     }
 
@@ -243,16 +425,23 @@ impl<'a> CSTParser<'a> {
         &[&Self::STARTERS_ATOM, &TOKEN_PREFIX_OPERATORS],
     );
     fn parse_expr(&mut self, recovery: &TokenSet) -> MarkClosed {
-        self.parse_expr_rec(0, recovery)
+        self.with(CSTTreeKind::Expr, |this| {
+            this.parse_expr_rec(0, true, recovery);
+        })
     }
 
-    fn parse_expr_rec(&mut self, minimum_bp: i8, recovery: &TokenSet) -> MarkClosed {
+    fn parse_expr_rec(
+        &mut self,
+        minimum_bp: i32,
+        allow_assignment: bool,
+        recovery: &TokenSet,
+    ) -> MarkClosed {
         // 1( prefix operators and literal parsing
         let mut lhs = if self.is_at_any(&TOKEN_PREFIX_OPERATORS) {
             self.with(CSTTreeKind::PrefixOpExpr, |this| {
                 let (_, right_bp) = Self::binding_power_prefix(this.current());
                 this.advance();
-                this.parse_expr_rec(right_bp, recovery);
+                this.parse_expr_rec(right_bp, allow_assignment, recovery);
             })
         } else {
             self.parse_delimited(recovery)
@@ -281,9 +470,24 @@ impl<'a> CSTParser<'a> {
                     break;
                 }
 
+                if self.current().is_assign_infix_operator() && !allow_assignment {
+                    break;
+                }
+
                 lhs = self.with_before(CSTTreeKind::InfixOpExpr, &lhs, |this| {
+                    // let operator = this.advance();
+                    // match operator {
+                    //     TokenKind::As | TokenKind::Is => {
+                    //         this.with(CSTTreeKind::TypeExpr, |this| {
+                    //             this.parse_expr_rec(right_bp, allow_assignment, recovery);
+                    //         });
+                    //     }
+                    //     _ => {
+                    //         this.parse_expr_rec(right_bp, allow_assignment, recovery);
+                    //     }
+                    // }
                     this.advance();
-                    this.parse_expr_rec(right_bp, recovery);
+                    this.parse_expr_rec(right_bp, allow_assignment, recovery);
                 });
 
                 continue;
@@ -318,7 +522,7 @@ impl<'a> CSTParser<'a> {
         }
     }
 
-    fn binding_power_infix(operator: TokenKind) -> Option<(i8, i8)> {
+    fn binding_power_infix(operator: TokenKind) -> Option<(i32, i32)> {
         match operator {
             TokenKind::Assign
             | TokenKind::AssignAdd
@@ -337,53 +541,55 @@ impl<'a> CSTParser<'a> {
             TokenKind::DoublePipe => Some((1, 2)),
             TokenKind::And => Some((2, 3)),
 
-            TokenKind::Eq
-            | TokenKind::Neq
-            | TokenKind::Lt
+            TokenKind::Eq | TokenKind::Neq => Some((3, 4)),
+
+            TokenKind::Lt
             | TokenKind::Gt
             | TokenKind::Lte
             | TokenKind::Gte
-            | TokenKind::Is
-            | TokenKind::As
-            | TokenKind::In => Some((3, 4)),
+            | TokenKind::Is => Some((4, 5)),
 
             // right-associative
-            TokenKind::QuestionMarkColon => Some((5, 4)),
+            TokenKind::QuestionMarkColon => Some((6, 5)),
 
-            TokenKind::Pipe => Some((5, 6)),
-            TokenKind::BitXor => Some((6, 7)),
-            TokenKind::BitAnd => Some((7, 8)),
+            TokenKind::Pipe => Some((6, 7)),
+            TokenKind::BitXor => Some((7, 8)),
+            TokenKind::BitAnd => Some((8, 9)),
 
-            TokenKind::RangeExclusive | TokenKind::DoubleDot => Some((8, 9)),
+            TokenKind::RangeExclusive | TokenKind::DoubleDot => Some((9, 10)),
 
-            TokenKind::Add | TokenKind::Sub => Some((9, 10)),
-            TokenKind::Mul | TokenKind::Div | TokenKind::Mod => Some((10, 11)),
+            TokenKind::Add | TokenKind::Sub => Some((10, 11)),
+            TokenKind::Mul | TokenKind::Div | TokenKind::Mod => Some((11, 12)),
 
             // right-associative
-            TokenKind::Pow => Some((12, 11)),
+            TokenKind::Pow => Some((13, 12)),
 
             TokenKind::BitLeftShift
             | TokenKind::BitRightShift
-            | TokenKind::BitUnsignedRightShift => Some((12, 13)),
+            | TokenKind::BitUnsignedRightShift => Some((13, 14)),
+
+            TokenKind::As | TokenKind::In => Some((14, 15)),
+
             _ => None,
         }
     }
 
-    fn binding_power_prefix(operator: TokenKind) -> ((), i8) {
+    fn binding_power_prefix(operator: TokenKind) -> ((), i32) {
         match operator {
-            // TODO: this might be too tight??
-            TokenKind::Await => ((), 13),
-            TokenKind::Add | TokenKind::Sub => ((), 13),
-            TokenKind::Not => ((), 13),
-            TokenKind::BitNot => ((), 13),
             TokenKind::TripleDot => ((), 0),
+
+            // TODO: this might be too tight??
+            TokenKind::Await => ((), 1000),
+            TokenKind::Add | TokenKind::Sub => ((), 1000),
+            TokenKind::Not => ((), 1000),
+            TokenKind::BitNot => ((), 1000),
             _ => unreachable!(),
         }
     }
 
-    fn binding_power_postfix(operator: TokenKind) -> Option<(i8, ())> {
+    fn binding_power_postfix(operator: TokenKind) -> Option<(i32, ())> {
         match operator {
-            TokenKind::DoubleNot => Some((14, ())),
+            TokenKind::DoubleNot => Some((2000, ())),
             _ => None,
         }
     }
@@ -413,28 +619,14 @@ impl<'a> CSTParser<'a> {
                 this.advance();
             }),
 
-            TokenKind::LeftParen => self.expect_bracket_group(
-                CSTTreeKind::ParenGroup,
-                recovery,
-                |this, recovery| {
-                    this.expect_sequence(
-                        "an expression",
-                        &Self::STARTERS_EXPR,
-                        recovery,
-                        recovery,
-                        Some(TokenKind::Comma),
-                        false,
-                        false,
-                        false,
-                        &Self::parse_expr,
-                    );
-                },
-            ),
+            TokenKind::LeftParen | TokenKind::LeftBracket => {
+                let tree_kind = match self.current() {
+                    TokenKind::LeftParen => CSTTreeKind::ParenGroup,
+                    TokenKind::LeftBracket => CSTTreeKind::BracketGroup,
+                    _ => unreachable!("unexpected token"),
+                };
 
-            TokenKind::LeftBracket => self.expect_bracket_group(
-                CSTTreeKind::BracketGroup,
-                recovery,
-                |this, recovery| {
+                self.expect_bracket_group(tree_kind, recovery, |this, recovery| {
                     this.expect_sequence(
                         "an expression",
                         &Self::STARTERS_EXPR,
@@ -444,10 +636,11 @@ impl<'a> CSTParser<'a> {
                         false,
                         false,
                         false,
+                        false,
                         &Self::parse_expr,
                     );
-                },
-            ),
+                })
+            }
 
             TokenKind::StringStart => self.parse_string(recovery),
 
@@ -470,6 +663,7 @@ impl<'a> CSTParser<'a> {
                 recovery,
                 &TokenSet::from(TokenKind::StringEnd),
                 None,
+                false,
                 false,
                 false,
                 false,
@@ -521,6 +715,7 @@ impl<'a> CSTParser<'a> {
         separator_token: Option<TokenKind>,
         break_on_missing_separator: bool,
         allow_annotations: bool,
+        allow_declaration_modifiers: bool,
         expect_at_least_one: bool,
         callback: F,
     ) where
@@ -534,6 +729,7 @@ impl<'a> CSTParser<'a> {
             separator_token,
             break_on_missing_separator,
             allow_annotations,
+            allow_declaration_modifiers,
             expect_at_least_one,
             |this, recovery| {
                 callback(this, recovery);
@@ -551,6 +747,7 @@ impl<'a> CSTParser<'a> {
         separator_token: Option<TokenKind>,
         break_on_missing_separator: bool,
         allow_annotations: bool,
+        allow_declaration_modifiers: bool,
         expect_at_least_one: bool,
         callback: F,
     ) where
@@ -559,6 +756,10 @@ impl<'a> CSTParser<'a> {
         let mut effective_starter_set = starter_set.clone();
         if allow_annotations {
             effective_starter_set = effective_starter_set.union(TokenKind::AtSign);
+        }
+        if allow_declaration_modifiers {
+            effective_starter_set =
+                effective_starter_set.union_set(&Self::STARTERS_DECL_MOD_LIST);
         }
 
         let mut child_recovery = recovery.clone();
@@ -584,6 +785,7 @@ impl<'a> CSTParser<'a> {
                     expected_str,
                     &effective_starter_set,
                     &child_recovery,
+                    false,
                 );
             }
 
@@ -593,16 +795,43 @@ impl<'a> CSTParser<'a> {
 
             let mut control_flow = SequenceControlFlow::Continue;
             if self.is_at_any(&effective_starter_set) {
-                if allow_annotations {
-                    self.parse_annotated_node(
-                        starter_set,
-                        &child_recovery,
-                        |this, recovery| {
-                            control_flow = callback(this, recovery);
-                        },
-                    );
-                } else {
-                    control_flow = callback(self, &child_recovery);
+                match (allow_annotations, allow_declaration_modifiers) {
+                    (true, true) => {
+                        self.parse_node_with_attributes(
+                            starter_set,
+                            &child_recovery,
+                            |this, recovery| {
+                                this.parse_node_with_decl_modifiers(
+                                    starter_set,
+                                    recovery,
+                                    |this, recovery| {
+                                        control_flow = callback(this, recovery);
+                                    },
+                                );
+                            },
+                        );
+                    }
+                    (true, false) => {
+                        self.parse_node_with_attributes(
+                            starter_set,
+                            &child_recovery,
+                            |this, recovery| {
+                                control_flow = callback(this, recovery);
+                            },
+                        );
+                    }
+                    (false, true) => {
+                        self.parse_node_with_decl_modifiers(
+                            starter_set,
+                            &child_recovery,
+                            |this, recovery| {
+                                control_flow = callback(this, recovery);
+                            },
+                        );
+                    }
+                    (false, false) => {
+                        control_flow = callback(self, &child_recovery);
+                    }
                 }
             }
 
@@ -636,7 +865,25 @@ impl<'a> CSTParser<'a> {
         }
     }
 
-    fn parse_annotated_node<F>(
+    fn parse_node_with_decl_modifiers<F>(
+        &mut self,
+        starter_set: &TokenSet,
+        recovery: &TokenSet,
+        callback: F,
+    ) where
+        F: FnOnce(&mut Self, &TokenSet),
+    {
+        if self.is_at_any(&Self::STARTERS_DECL_MOD_LIST) {
+            self.with(CSTTreeKind::NodeWithDeclModifiers, |this| {
+                this.parse_decl_mod_list(starter_set, recovery);
+                callback(this, recovery);
+            });
+        } else {
+            callback(self, recovery);
+        }
+    }
+
+    fn parse_node_with_attributes<F>(
         &mut self,
         starter_set: &TokenSet,
         recovery: &TokenSet,
@@ -725,11 +972,36 @@ impl<'a> CSTParser<'a> {
         }
     }
 
-    fn recover_until(&mut self, kind: TokenKind, recovery: &TokenSet) {
+    fn recovers_at(&mut self, kind: TokenKind, recovery: &TokenSet) -> bool {
+        self.recovers_at_any(&TokenSet::from(kind), recovery)
+            .is_some()
+    }
+
+    fn recovers_at_any(
+        &mut self,
+        expected_set: &TokenSet,
+        recovery: &TokenSet,
+    ) -> Option<TokenKind> {
+        self.recover_until_any(
+            format!("'{}'", expected_set).as_str(),
+            expected_set,
+            recovery,
+            true,
+        );
+        self.at_any(expected_set)
+    }
+
+    fn recover_until(
+        &mut self,
+        kind: TokenKind,
+        recovery: &TokenSet,
+        silent_on_missing: bool,
+    ) {
         self.recover_until_any(
             format!("'{}'", kind).as_str(),
             &TokenSet::from(kind),
             recovery,
+            silent_on_missing,
         );
     }
 
@@ -738,6 +1010,7 @@ impl<'a> CSTParser<'a> {
         expected_str: &str,
         expected_set: &TokenSet,
         recovery: &TokenSet,
+        silent_on_missing: bool,
     ) {
         if self.is_at_any(expected_set) {
             return;
@@ -760,7 +1033,7 @@ impl<'a> CSTParser<'a> {
             );
         }
 
-        if !self.is_at_any(expected_set) {
+        if !self.is_at_any(expected_set) && !silent_on_missing {
             self.diagnostic_context.error(
                 format!("Expected {}", expected_str).as_str(),
                 &start_location,
@@ -793,11 +1066,9 @@ impl<'a> CSTParser<'a> {
         self.at_any(expected_set)
     }
 
-    fn event_token_advance(&mut self) -> TokenKind {
+    fn event_token_advance(&mut self) {
         self.events.push(Event::Advance);
-        let kind = self.current_token().kind;
         self.advance_token_stream();
-        kind
     }
 
     fn event_token_skip(&mut self) {
@@ -853,7 +1124,7 @@ impl<'a> CSTParser<'a> {
     }
 
     fn expect(&mut self, kind: TokenKind, recovery: &TokenSet) -> bool {
-        self.recover_until(kind, recovery);
+        self.recover_until(kind, recovery, false);
         self.eat(kind)
     }
 
@@ -863,7 +1134,7 @@ impl<'a> CSTParser<'a> {
         expected_set: &TokenSet,
         recovery: &TokenSet,
     ) -> Option<TokenKind> {
-        self.recover_until_any(expected_str, expected_set, recovery);
+        self.recover_until_any(expected_str, expected_set, recovery, false);
         self.eat_any(expected_set)
     }
 
